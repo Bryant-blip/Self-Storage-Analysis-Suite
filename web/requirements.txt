@@ -1,0 +1,12 @@
+# Web app dependencies
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+python-jose[cryptography]
+passlib[bcrypt]
+sqlalchemy
+openpyxl
+claude-agent-sdk
+anyio
+geopy

@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storage Tools</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #0d1117;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        /* ── Top bar ── */
+        .accent-line { height: 3px; background: #4f8ef7; }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 28px;
+        }
+        .header-left { display: flex; align-items: baseline; gap: 8px; }
+        .header h1 { font-size: 22px; font-weight: 700; }
+        .header .sub { color: #64748b; font-size: 13px; }
+        .user-info {
+            display: flex; align-items: center; gap: 12px;
+            color: #64748b; font-size: 13px;
+        }
+        .logout-btn {
+            background: none; border: 1px solid #21293a; border-radius: 6px;
+            color: #64748b; padding: 6px 14px; cursor: pointer; font-size: 12px;
+        }
+        .logout-btn:hover { border-color: #f43f5e; color: #f43f5e; }
+
+        /* ── Tabs ── */
+        .tab-bar { display: flex; gap: 4px; padding: 0 24px; }
+        .tab-btn {
+            padding: 10px 24px; border: none; border-radius: 8px 8px 0 0;
+            font-size: 14px; font-weight: 600; cursor: pointer;
+            background: #1e2736; color: #64748b; transition: all 0.2s;
+        }
+        .tab-btn.active { background: #4f8ef7; color: #fff; }
+        .divider { height: 1px; background: #21293a; margin: 0 24px; }
+
+        /* ── Content ── */
+        .content { padding: 20px 28px; max-width: 1100px; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* ── Cards ── */
+        .card {
+            background: #161b27; border: 1px solid #21293a;
+            border-radius: 10px; padding: 22px 26px; margin-bottom: 16px;
+        }
+
+        /* ── Form elements ── */
+        .form-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
+        .form-group { display: flex; flex-direction: column; }
+        .form-group label {
+            font-size: 12px; color: #64748b; margin-bottom: 6px; font-weight: 500;
+        }
+        input[type="text"], input[type="number"], select {
+            padding: 11px 14px; background: #0d1117; border: 1px solid #21293a;
+            border-radius: 8px; color: #e2e8f0; font-size: 14px; outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus, select:focus { border-color: #4f8ef7; }
+        select { cursor: pointer; }
+
+        /* ── Buttons ── */
+        .btn {
+            padding: 11px 22px; border: none; border-radius: 8px;
+            font-size: 14px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px;
+        }
+        .btn-primary { background: #4f8ef7; color: #fff; }
+        .btn-primary:hover { background: #3b7de8; }
+        .btn-orange { background: #f59e0b; color: #1a1000; }
+        .btn-orange:hover { background: #d97706; }
+        .btn-success { background: #34d399; color: #051a0e; }
+        .btn-success:hover { background: #28c789; }
+        .btn-danger { background: #f43f5e; color: #fff; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ── Toggle ── */
+        .toggle-group { display: flex; gap: 2px; }
+        .toggle-btn {
+            padding: 10px 24px; border: none; border-radius: 8px;
+            font-size: 14px; font-weight: 600; cursor: pointer;
+            background: #1e2736; color: #64748b; transition: all 0.2s;
+        }
+        .toggle-btn.active { background: #4f8ef7; color: #fff; }
+
+        /* ── Results table ── */
+        .results-table {
+            width: 100%; border-collapse: collapse; margin-top: 12px;
+            font-size: 14px;
+        }
+        .results-table th {
+            background: #1a2233; color: #4f8ef7; text-align: left;
+            padding: 10px 14px; font-weight: 600; font-size: 13px;
+        }
+        .results-table td {
+            padding: 8px 14px; border-bottom: 1px solid #161b27;
+        }
+        .results-table tr:nth-child(even) td { background: #0c1018; }
+        .results-table tr:nth-child(odd) td { background: #080c14; }
+        .results-table .subtotal td {
+            background: #132030 !important; font-weight: 600;
+        }
+        .results-table .soft-cost td {
+            color: #64748b; font-size: 13px;
+        }
+        .results-table .grand-total td {
+            background: #4f8ef7 !important; color: #fff;
+            font-weight: 700; font-size: 15px;
+        }
+        .right { text-align: right; }
+        .mono { font-family: 'Consolas', 'Courier New', monospace; }
+
+        /* ── Log area ── */
+        .log-area {
+            background: #080c14; border: 1px solid #21293a; border-radius: 8px;
+            padding: 16px; min-height: 200px; max-height: 400px;
+            overflow-y: auto; font-family: 'Consolas', monospace;
+            font-size: 13px; color: #8899bb; white-space: pre-wrap;
+            line-height: 1.6;
+        }
+
+        /* ── Status bar ── */
+        .status-bar {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: #161b27; border-top: 1px solid #21293a;
+            padding: 10px 28px; display: flex; align-items: center;
+            justify-content: space-between; font-size: 13px; z-index: 100;
+        }
+        .status-text { color: #64748b; display: flex; align-items: center; gap: 8px; }
+        .status-dot { font-size: 10px; }
+
+        .location-hint {
+            font-size: 13px; margin-top: 8px; color: #64748b;
+        }
+        .location-hint.accent { color: #4f8ef7; }
+        .location-hint.warn { color: #f59e0b; }
+
+        /* bottom padding for status bar */
+        .content { padding-bottom: 60px; }
+    </style>
+</head>
+<body>
+    <div class="accent-line"></div>
+
+    <!-- Header -->
+    <div class="header">
+        <div class="header-left">
+            <h1>Storage Tools</h1>
+            <span class="sub">Self Storage Analysis Suite</span>
+        </div>
+        <div class="user-info">
+            <span id="userEmail"></span>
+            <button class="logout-btn" onclick="logout()">Log Out</button>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('comps')">Market Comps</button>
+        <button class="tab-btn" onclick="switchTab('cost')">Cost Estimator</button>
+    </div>
+    <div class="divider"></div>
+
+    <!-- ═══════════ MARKET COMPS TAB ═══════════ -->
+    <div class="content">
+        <div class="tab-content active" id="tab-comps">
+            <div class="card">
+                <div class="form-row">
+                    <div class="form-group" style="flex:1;">
+                        <label>Subject Property Location</label>
+                        <input type="text" id="compsLocation"
+                               placeholder="e.g. 78701  or  Austin, TX  or  123 Main St, Denver CO"
+                               style="width:100%;">
+                    </div>
+                    <div class="form-group">
+                        <label>Radius (mi)</label>
+                        <input type="number" id="compsRadius" value="5" min="1" max="7" style="width:80px;">
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-primary" id="compsRunBtn" onclick="runComps()">
+                            &#9654; Run Analysis
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <span style="font-size:13px; font-weight:600; color:#64748b;">Activity Log</span>
+                <span style="font-size:13px; color:#64748b;" id="compsStatus"></span>
+            </div>
+            <div class="log-area" id="compsLog">Enter a location above and click Run Analysis.</div>
+
+            <div style="margin-top:12px; text-align:right; display:none;" id="compsDownloadWrap">
+                <button class="btn btn-success" id="compsDownloadBtn" onclick="downloadComps()">
+                    Download Excel &#9654;
+                </button>
+            </div>
+        </div>
+
+        <!-- ═══════════ COST ESTIMATOR TAB ═══════════ -->
+        <div class="tab-content" id="tab-cost">
+            <div class="card">
+                <!-- Building type toggle -->
+                <label style="font-size:12px; color:#64748b; margin-bottom:8px; display:block;">Building Type</label>
+                <div class="toggle-group" style="margin-bottom:18px;">
+                    <button class="toggle-btn active" id="togDriveup" onclick="setBuildingType('driveup')">Drive-Up</button>
+                    <button class="toggle-btn" id="togCC" onclick="setBuildingType('cc')">Climate Controlled</button>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Total Building SF</label>
+                        <input type="text" id="costSF" value="50,000" style="width:140px;">
+                    </div>
+                    <div class="form-group">
+                        <label>City / Metro</label>
+                        <input type="text" id="costCity" placeholder="e.g. Austin, Denver, Miami" style="width:220px;">
+                    </div>
+                    <div class="form-group">
+                        <label>Quality</label>
+                        <select id="costQuality" style="width:130px;">
+                            <option value="Economy">Economy</option>
+                            <option value="Average" selected>Average</option>
+                            <option value="Premium">Premium</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-orange" onclick="quickEstimate()">&#9654; Quick Estimate</button>
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-primary" id="accurateBtn" onclick="accurateEstimate()">&#9654; Accurate Estimate</button>
+                    </div>
+                </div>
+                <div class="location-hint" id="locationHint"></div>
+            </div>
+
+            <!-- Results -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <span style="font-size:13px; font-weight:600; color:#64748b;">Cost Breakdown</span>
+                <span style="font-size:13px; color:#64748b;" id="costLocationLabel"></span>
+            </div>
+
+            <div id="costResults">
+                <div class="card" style="text-align:center; color:#64748b; padding:40px;">
+                    Enter building details above and click Estimate
+                </div>
+            </div>
+
+            <!-- Accurate estimate log (hidden until running) -->
+            <div id="accurateLogWrap" style="display:none; margin-top:16px;">
+                <span style="font-size:13px; font-weight:600; color:#64748b;">Agent Log</span>
+                <div class="log-area" id="accurateLog" style="margin-top:8px;"></div>
+                <div style="margin-top:12px; text-align:right; display:none;" id="accurateDownloadWrap">
+                    <button class="btn btn-success" onclick="downloadAccurate()">Download Excel &#9654;</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status bar -->
+    <div class="status-bar">
+        <div class="status-text">
+            <span class="status-dot" id="statusDot">&#9679;</span>
+            <span id="statusText">Ready</span>
+        </div>
+    </div>
+
+    <script>
+        // ── Auth check ──
+        const token = localStorage.getItem('token');
+        if (!token) { window.location.href = '/login'; }
+        document.getElementById('userEmail').textContent = localStorage.getItem('email') || '';
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('email');
+            window.location.href = '/login';
+        }
+
+        function authHeaders() {
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+            };
+        }
+
+        // ── Tab switching ──
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('tab-' + tab).classList.add('active');
+            const btns = document.querySelectorAll('.tab-bar .tab-btn');
+            if (tab === 'comps') btns[0].classList.add('active');
+            else btns[1].classList.add('active');
+        }
+
+        // ── Building type toggle ──
+        let buildingType = 'driveup';
+        function setBuildingType(t) {
+            buildingType = t;
+            document.getElementById('togDriveup').classList.toggle('active', t === 'driveup');
+            document.getElementById('togCC').classList.toggle('active', t === 'cc');
+        }
+
+        // ── Status ──
+        function setStatus(text, color) {
+            document.getElementById('statusText').textContent = text;
+            document.getElementById('statusText').style.color = color || '#64748b';
+            document.getElementById('statusDot').style.color = color || '#64748b';
+        }
+
+        // ── Quick Estimate ──
+        async function quickEstimate() {
+            const sf = parseFloat(document.getElementById('costSF').value.replace(/,/g, ''));
+            const city = document.getElementById('costCity').value.trim();
+            const quality = document.getElementById('costQuality').value;
+
+            if (!sf || sf <= 0) { alert('Please enter a valid SF'); return; }
+
+            try {
+                const res = await fetch('/api/quick-estimate', {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: JSON.stringify({
+                        building_type: buildingType,
+                        sf: sf,
+                        city: city,
+                        quality: quality,
+                    }),
+                });
+
+                if (res.status === 401) { window.location.href = '/login'; return; }
+                if (!res.ok) { const d = await res.json(); alert(d.detail); return; }
+
+                const data = await res.json();
+                renderCostResults(data);
+                setStatus(`Estimate: ${data.building_type} \u2014 ${sf.toLocaleString()} SF \u2014 ${data.grand_total} total (${data.total_psf}/SF)`, '#34d399');
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        function renderCostResults(data) {
+            // Location hint
+            const hint = document.getElementById('locationHint');
+            if (data.matched_city) {
+                hint.textContent = `Location factor: ${data.location_factor.toFixed(2)}x  (${data.matched_city})`;
+                hint.className = 'location-hint accent';
+            } else if (data.city && data.city !== 'National Avg') {
+                hint.textContent = 'City not found \u2014 using national average (1.00x)';
+                hint.className = 'location-hint warn';
+            } else {
+                hint.textContent = 'No city \u2014 using national average (1.00x)';
+                hint.className = 'location-hint';
+            }
+
+            let html = '<table class="results-table"><thead><tr>';
+            html += '<th>Component</th><th>$/SF or Note</th><th class="right">Total Cost</th>';
+            html += '</tr></thead><tbody>';
+
+            // Hard cost rows
+            data.hard_cost_rows.forEach((row, i) => {
+                html += `<tr><td>${row.name}</td><td class="mono right">${row.psf}</td><td class="mono right">${row.cost}</td></tr>`;
+            });
+
+            // Hard cost subtotal
+            html += `<tr class="subtotal"><td>Hard Cost Subtotal</td><td></td><td class="mono right">${data.total_hard}</td></tr>`;
+
+            // Soft cost rows
+            data.soft_cost_rows.forEach(row => {
+                html += `<tr class="soft-cost"><td>&nbsp;&nbsp;${row.name}</td><td class="mono right">${row.pct}</td><td class="mono right">${row.cost}</td></tr>`;
+            });
+
+            // Soft cost subtotal
+            html += `<tr class="subtotal"><td>Soft Cost Subtotal</td><td></td><td class="mono right">${data.total_soft}</td></tr>`;
+
+            // Grand total
+            html += `<tr class="grand-total"><td>TOTAL ESTIMATED COST</td><td class="mono right">${data.total_psf} / SF</td><td class="mono right">${data.grand_total}</td></tr>`;
+
+            html += '</tbody></table>';
+            document.getElementById('costResults').innerHTML = html;
+        }
+
+        // ── Market Comps ──
+        let compsFile = null;
+
+        async function runComps() {
+            const location = document.getElementById('compsLocation').value.trim();
+            const radius = parseFloat(document.getElementById('compsRadius').value);
+
+            if (!location) { alert('Please enter a location'); return; }
+            if (radius > 7) { alert('Maximum radius is 7 miles'); return; }
+
+            const logEl = document.getElementById('compsLog');
+            logEl.textContent = '';
+            document.getElementById('compsDownloadWrap').style.display = 'none';
+            compsFile = null;
+
+            document.getElementById('compsRunBtn').disabled = true;
+            setStatus(`Searching near ${location}...`, '#4f8ef7');
+
+            try {
+                const res = await fetch('/api/comps', {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: JSON.stringify({ location, radius }),
+                });
+
+                if (res.status === 401) { window.location.href = '/login'; return; }
+                if (!res.ok) { const d = await res.json(); alert(d.detail); return; }
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        const msg = JSON.parse(line.slice(6));
+
+                        if (msg.type === 'log') {
+                            logEl.textContent += msg.text + '\n';
+                            logEl.scrollTop = logEl.scrollHeight;
+                        } else if (msg.type === 'done') {
+                            compsFile = msg.file;
+                            if (compsFile) {
+                                document.getElementById('compsDownloadWrap').style.display = 'block';
+                                setStatus(`Done! File: ${compsFile}`, '#34d399');
+                            } else {
+                                setStatus('Finished (no file produced)', '#64748b');
+                            }
+                            logEl.textContent += '\n=== COMPLETE ===\n';
+                        } else if (msg.type === 'error') {
+                            logEl.textContent += '\nERROR: ' + msg.text + '\n';
+                            setStatus('Error: ' + msg.text, '#f43f5e');
+                        }
+                    }
+                }
+            } catch (err) {
+                logEl.textContent += '\nConnection error: ' + err.message + '\n';
+                setStatus('Error: ' + err.message, '#f43f5e');
+            }
+
+            document.getElementById('compsRunBtn').disabled = false;
+        }
+
+        function downloadComps() {
+            if (!compsFile) return;
+            window.open(`/api/download/${encodeURIComponent(compsFile)}?token=${token}`, '_blank');
+        }
+
+        // ── Accurate Estimate ──
+        let accurateFile = null;
+
+        async function accurateEstimate() {
+            const sf = parseFloat(document.getElementById('costSF').value.replace(/,/g, ''));
+            const city = document.getElementById('costCity').value.trim();
+            const quality = document.getElementById('costQuality').value;
+
+            if (!sf || sf <= 0) { alert('Please enter a valid SF'); return; }
+            if (!city) { alert('Please enter a city for the accurate estimate'); return; }
+
+            const logEl = document.getElementById('accurateLog');
+            logEl.textContent = '';
+            document.getElementById('accurateLogWrap').style.display = 'block';
+            document.getElementById('accurateDownloadWrap').style.display = 'none';
+            accurateFile = null;
+
+            document.getElementById('accurateBtn').disabled = true;
+            setStatus(`Researching construction costs for ${city}...`, '#4f8ef7');
+
+            try {
+                const res = await fetch('/api/accurate-estimate', {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: JSON.stringify({
+                        building_type: buildingType,
+                        sf: sf,
+                        city: city,
+                        quality: quality,
+                    }),
+                });
+
+                if (res.status === 401) { window.location.href = '/login'; return; }
+                if (!res.ok) { const d = await res.json(); alert(d.detail); return; }
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        const msg = JSON.parse(line.slice(6));
+
+                        if (msg.type === 'log') {
+                            logEl.textContent += msg.text + '\n';
+                            logEl.scrollTop = logEl.scrollHeight;
+                        } else if (msg.type === 'done') {
+                            accurateFile = msg.file;
+                            if (accurateFile) {
+                                document.getElementById('accurateDownloadWrap').style.display = 'block';
+                                setStatus(`Done! File: ${accurateFile}`, '#34d399');
+                            } else {
+                                setStatus('Finished (no file produced)', '#64748b');
+                            }
+                            logEl.textContent += '\n=== COMPLETE ===\n';
+                        } else if (msg.type === 'error') {
+                            logEl.textContent += '\nERROR: ' + msg.text + '\n';
+                            setStatus('Error: ' + msg.text, '#f43f5e');
+                        }
+                    }
+                }
+            } catch (err) {
+                logEl.textContent += '\nConnection error: ' + err.message + '\n';
+                setStatus('Error: ' + err.message, '#f43f5e');
+            }
+
+            document.getElementById('accurateBtn').disabled = false;
+        }
+
+        function downloadAccurate() {
+            if (!accurateFile) return;
+            window.open(`/api/download/${encodeURIComponent(accurateFile)}?token=${token}`, '_blank');
+        }
+    </script>
+</body>
+</html>
