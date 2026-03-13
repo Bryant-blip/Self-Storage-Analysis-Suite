@@ -5,8 +5,10 @@ jinja2
 python-multipart
 python-jose[cryptography]
 passlib[bcrypt]
+bcrypt==4.0.1
 sqlalchemy
 openpyxl
 claude-agent-sdk
 anyio
 geopy
+python-dotenv
