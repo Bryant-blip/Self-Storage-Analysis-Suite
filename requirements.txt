@@ -1,0 +1,17 @@
+# Self Storage Market Rent Comps Agent — Dependencies
+
+# Claude Agent SDK (provides WebSearch, WebFetch, Bash tools)
+claude-agent-sdk
+
+# Async runtime (required by Agent SDK)
+anyio
+
+# Excel file generation
+openpyxl
+
+# Distance / geocoding calculations
+geopy
+
+# HTTP requests + HTML parsing (used by the agent's Bash scripts)
+requests
+beautifulsoup4
