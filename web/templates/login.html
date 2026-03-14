@@ -125,13 +125,6 @@
             <label for="password">Password</label>
             <input type="password" id="password" required placeholder="Password" minlength="6">
 
-            <div id="apiKeyGroup" style="display:none;">
-                <label for="apiKey">Anthropic API Key</label>
-                <input type="password" id="apiKey" placeholder="sk-ant-...">
-                <p style="color:#64748b; font-size:11px; margin-top:4px;">
-                    Get your key at <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:#4f8ef7;">console.anthropic.com</a>
-                </p>
-            </div>
 
             <button type="submit" class="submit-btn" id="submitBtn">Log In</button>
             <p class="error-msg" id="errorMsg"></p>
@@ -147,7 +140,6 @@
                 btn.classList.toggle('active', (i === 0 && tab === 'login') || (i === 1 && tab === 'register'));
             });
             document.getElementById('submitBtn').textContent = tab === 'login' ? 'Log In' : 'Create Account';
-            document.getElementById('apiKeyGroup').style.display = tab === 'register' ? 'block' : 'none';
             document.getElementById('errorMsg').style.display = 'none';
         }
 
@@ -159,15 +151,6 @@
             errorEl.style.display = 'none';
 
             const body = { email, password };
-            if (mode === 'register') {
-                const apiKey = document.getElementById('apiKey').value.trim();
-                if (!apiKey) {
-                    errorEl.textContent = 'API key is required to sign up';
-                    errorEl.style.display = 'block';
-                    return;
-                }
-                body.api_key = apiKey;
-            }
 
             try {
                 const res = await fetch(`/api/${mode}`, {

@@ -8,8 +8,9 @@ Endpoints:
   GET  /api/download/{file}   — download generated Excel file
   POST /api/register          — create account
   POST /api/login             — get JWT token
-  POST /api/update-api-key    — update stored API key
   GET  /api/usage             — get user's usage stats
+  GET  /api/admin/users       — admin user dashboard
+  GET  /admin                 — admin dashboard page
 """
 
 import os
@@ -18,7 +19,6 @@ load_dotenv()
 
 import json
 import asyncio
-import base64
 from datetime import date, datetime, timedelta
 from typing import Optional
 from collections import Counter
@@ -35,9 +35,6 @@ from sqlalchemy import func
 
 from passlib.context import CryptContext
 from jose import jwt, JWTError
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from claude_agent_sdk import (
     query, ClaudeAgentOptions, ResultMessage, AssistantMessage, TextBlock,
@@ -57,6 +54,9 @@ if not SECRET_KEY or SECRET_KEY == "change-me-in-production-use-a-real-secret":
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 24
 
+# Server-side API key — users never see or touch this
+SERVER_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
 # Rate limiting: max searches per user per day
 DAILY_SEARCH_LIMIT = int(os.environ.get("DAILY_SEARCH_LIMIT", "50"))
 
@@ -65,18 +65,6 @@ ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "")
 
 # Password hashing
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# API key encryption — derives a Fernet key from JWT_SECRET
-_kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=b"storage-tools-salt", iterations=100_000)
-_fernet = Fernet(base64.urlsafe_b64encode(_kdf.derive(SECRET_KEY.encode())))
-
-
-def _encrypt_api_key(key: str) -> str:
-    return _fernet.encrypt(key.encode()).decode()
-
-
-def _decrypt_api_key(encrypted: str) -> str:
-    return _fernet.decrypt(encrypted.encode()).decode()
 
 
 # ── Cost Data (same as desktop app) ──────────────────────────────────────────
@@ -295,12 +283,11 @@ def get_current_user(request: Request) -> str:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
-def _get_user_api_key(email: str, db: Session) -> str:
-    """Get the stored API key for a user (decrypted)."""
-    user = db.query(User).filter(User.email == email).first()
-    if not user or not user.api_key_encrypted:
-        raise HTTPException(400, "No API key configured. Go to Settings to add your Anthropic API key.")
-    return _decrypt_api_key(user.api_key_encrypted)
+def _get_server_api_key() -> str:
+    """Get the server-side API key from environment."""
+    if not SERVER_API_KEY:
+        raise HTTPException(500, "Server API key not configured. Contact administrator.")
+    return SERVER_API_KEY
 
 
 def _check_rate_limit(user_id: int, db: Session):
@@ -325,14 +312,10 @@ def _log_usage(user_id: int, action: str, location: str, db: Session):
 class RegisterRequest(BaseModel):
     email: str
     password: str
-    api_key: str
 
 class LoginRequest(BaseModel):
     email: str
     password: str
-
-class UpdateApiKeyRequest(BaseModel):
-    api_key: str
 
 class QuickEstimateRequest(BaseModel):
     building_type: str  # "driveup" or "cc"
@@ -360,6 +343,10 @@ async def home(request: Request):
 async def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
 
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request):
+    return templates.TemplateResponse("admin.html", {"request": request})
+
 
 # ── Auth API ─────────────────────────────────────────────────────────────────
 @app.post("/api/register")
@@ -369,8 +356,6 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == req.email).first()
     if existing:
         raise HTTPException(400, "Email already registered")
-    if not req.api_key.startswith("sk-ant-"):
-        raise HTTPException(400, "Invalid API key — should start with sk-ant-")
 
     # First user to register becomes admin
     is_first_user = db.query(func.count(User.id)).scalar() == 0
@@ -378,7 +363,6 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
     user = User(
         email=req.email,
         password_hash=pwd_ctx.hash(req.password),
-        api_key_encrypted=_encrypt_api_key(req.api_key),
     )
     db.add(user)
     db.commit()
@@ -400,23 +384,9 @@ async def login(req: LoginRequest, db: Session = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(403, "Account is disabled")
 
-    has_key = bool(user.api_key_encrypted)
     token = create_token(req.email)
-    return {"token": token, "email": req.email, "has_api_key": has_key}
-
-
-@app.post("/api/update-api-key")
-async def update_api_key(req: UpdateApiKeyRequest, request: Request, db: Session = Depends(get_db)):
-    email = get_current_user(request)
-    if not req.api_key.startswith("sk-ant-"):
-        raise HTTPException(400, "Invalid API key — should start with sk-ant-")
-
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        raise HTTPException(404, "User not found")
-    user.api_key_encrypted = _encrypt_api_key(req.api_key)
-    db.commit()
-    return {"ok": True}
+    is_admin = (req.email == ADMIN_EMAIL)
+    return {"token": token, "email": req.email, "is_admin": is_admin}
 
 
 # ── Usage stats ──────────────────────────────────────────────────────────────
@@ -486,7 +456,7 @@ async def admin_users(request: Request, db: Session = Depends(get_db)):
             "email": u.email,
             "created": u.created_at.isoformat() if u.created_at else "",
             "active": u.is_active,
-            "has_api_key": bool(u.api_key_encrypted),
+            "subscription": u.subscription_tier or "free",
             "total_searches": total_searches,
             "today_searches": today_searches,
             "last_active": last_use[0].isoformat() if last_use else "never",
@@ -584,7 +554,7 @@ async def run_comps(req: CompsRequest, request: Request, db: Session = Depends(g
         raise HTTPException(404, "User not found")
 
     _check_rate_limit(user.id, db)
-    user_api_key = _get_user_api_key(email, db)
+    api_key = _get_server_api_key()
 
     if req.radius > 7:
         raise HTTPException(400, "Maximum radius is 7 miles")
@@ -600,8 +570,8 @@ async def run_comps(req: CompsRequest, request: Request, db: Session = Depends(g
     output_file = os.path.join(OUTPUT_DIR, f"storage_comps_{safe_loc}_{today}.xlsx")
 
     async def event_stream():
-        # Set user's API key for this request
-        os.environ["ANTHROPIC_API_KEY"] = user_api_key
+        # Set server API key for this request
+        os.environ["ANTHROPIC_API_KEY"] = api_key
 
         prompt = f"""
 Find self-storage market rent comps for:
@@ -653,7 +623,7 @@ async def run_accurate_estimate(req: AccurateEstimateRequest, request: Request, 
         raise HTTPException(404, "User not found")
 
     _check_rate_limit(user.id, db)
-    user_api_key = _get_user_api_key(email, db)
+    api_key = _get_server_api_key()
 
     if not req.city.strip():
         raise HTTPException(400, "City is required for accurate estimate")
@@ -666,8 +636,8 @@ async def run_accurate_estimate(req: AccurateEstimateRequest, request: Request, 
     output_file = os.path.join(OUTPUT_DIR, f"cost_estimate_{safe_city}_{today}.xlsx")
 
     async def event_stream():
-        # Set user's API key for this request
-        os.environ["ANTHROPIC_API_KEY"] = user_api_key
+        # Set server API key for this request
+        os.environ["ANTHROPIC_API_KEY"] = api_key
 
         prompt = f"""
 Research and create a construction cost estimate for:

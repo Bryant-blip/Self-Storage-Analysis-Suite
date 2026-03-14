@@ -33,9 +33,11 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
-    api_key_encrypted = Column(String, nullable=True)
+    api_key_encrypted = Column(String, nullable=True)       # legacy — no longer used
     created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
+    subscription_tier = Column(String, nullable=True, default="free")   # free, pro, enterprise
+    subscription_expires = Column(DateTime, nullable=True)              # null = no expiry
 
 
 class UsageLog(Base):
