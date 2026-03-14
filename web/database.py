@@ -38,6 +38,7 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     subscription_tier = Column(String, nullable=True, default="free")   # free, pro, enterprise
     subscription_expires = Column(DateTime, nullable=True)              # null = no expiry
+    daily_limit = Column(Integer, nullable=True, default=0)            # per-user daily search cap (0 = no access)
 
 
 class UsageLog(Base):
@@ -67,6 +68,8 @@ def init_db():
             migrations.append("ALTER TABLE users ADD COLUMN subscription_expires TIMESTAMP")
         if "api_key_encrypted" not in existing:
             migrations.append("ALTER TABLE users ADD COLUMN api_key_encrypted VARCHAR")
+        if "daily_limit" not in existing:
+            migrations.append("ALTER TABLE users ADD COLUMN daily_limit INTEGER DEFAULT 0")
         if migrations:
             with engine.begin() as conn:
                 for sql in migrations:
