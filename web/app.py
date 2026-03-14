@@ -61,7 +61,7 @@ SERVER_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 DAILY_SEARCH_LIMIT = int(os.environ.get("DAILY_SEARCH_LIMIT", "50"))
 
 # Admin email — only this user can access /api/admin endpoints
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "").lower()
 
 # Password hashing
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -364,7 +364,7 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.refresh(user)
 
     token = create_token(req.email)
-    is_admin = (req.email == ADMIN_EMAIL)
+    is_admin = (req.email.lower() == ADMIN_EMAIL)
     return {"token": token, "email": req.email, "is_admin": is_admin}
 
 
@@ -377,7 +377,7 @@ async def login(req: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(403, "Account is disabled")
 
     token = create_token(req.email)
-    is_admin = (req.email == ADMIN_EMAIL)
+    is_admin = (req.email.lower() == ADMIN_EMAIL)
     return {"token": token, "email": req.email, "is_admin": is_admin}
 
 
@@ -422,7 +422,7 @@ async def get_usage(request: Request, db: Session = Depends(get_db)):
 @app.get("/api/admin/users")
 async def admin_users(request: Request, db: Session = Depends(get_db)):
     email = get_current_user(request)
-    if ADMIN_EMAIL and email != ADMIN_EMAIL:
+    if ADMIN_EMAIL and email.lower() != ADMIN_EMAIL:
         raise HTTPException(403, "Admin access only")
 
     users = db.query(User).order_by(User.created_at.desc()).all()
@@ -460,7 +460,7 @@ async def admin_users(request: Request, db: Session = Depends(get_db)):
 @app.post("/api/admin/toggle-user/{user_id}")
 async def admin_toggle_user(user_id: int, request: Request, db: Session = Depends(get_db)):
     email = get_current_user(request)
-    if ADMIN_EMAIL and email != ADMIN_EMAIL:
+    if ADMIN_EMAIL and email.lower() != ADMIN_EMAIL:
         raise HTTPException(403, "Admin access only")
 
     user = db.query(User).filter(User.id == user_id).first()
