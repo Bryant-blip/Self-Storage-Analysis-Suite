@@ -166,6 +166,7 @@
                 }
                 localStorage.setItem('token', data.token);
                 localStorage.setItem('email', data.email);
+                localStorage.setItem('is_admin', data.is_admin ? 'true' : 'false');
                 window.location.href = '/';
             } catch (err) {
                 errorEl.textContent = 'Connection error. Please try again.';

@@ -161,6 +161,7 @@
             <span class="sub">Self Storage Analysis Suite</span>
         </div>
         <div class="user-info">
+            <a href="/admin" id="adminLink" style="display:none; color:#4f8ef7; text-decoration:none; font-size:13px; margin-right:4px;">Admin</a>
             <span id="userEmail"></span>
             <button class="logout-btn" onclick="logout()">Log Out</button>
         </div>
@@ -282,10 +283,14 @@
         const token = localStorage.getItem('token');
         if (!token) { window.location.href = '/login'; }
         document.getElementById('userEmail').textContent = localStorage.getItem('email') || '';
+        if (localStorage.getItem('is_admin') === 'true') {
+            document.getElementById('adminLink').style.display = '';
+        }
 
         function logout() {
             localStorage.removeItem('token');
             localStorage.removeItem('email');
+            localStorage.removeItem('is_admin');
             window.location.href = '/login';
         }
 
