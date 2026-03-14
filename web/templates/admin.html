@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storage Tools — Admin</title>
+    <link rel="icon" type="image/png" href="/static/storcomps-logo.png">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #0d1117;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+        .header {
+            background: #161b27;
+            border-bottom: 1px solid #21293a;
+            padding: 16px 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .header h1 { font-size: 20px; font-weight: 700; }
+        .header .sub { color: #64748b; font-size: 13px; margin-left: 12px; }
+        .header-right { display: flex; gap: 12px; align-items: center; }
+        .header-right a {
+            color: #4f8ef7; text-decoration: none; font-size: 13px;
+        }
+        .header-right a:hover { text-decoration: underline; }
+        .logout-btn {
+            background: #1e2736; border: 1px solid #21293a; color: #64748b;
+            padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
+        }
+        .logout-btn:hover { color: #e2e8f0; border-color: #4f8ef7; }
+
+        .stats-row {
+            display: flex; gap: 16px; padding: 24px 28px;
+        }
+        .stat-card {
+            background: #161b27; border: 1px solid #21293a; border-radius: 10px;
+            padding: 20px 24px; flex: 1;
+        }
+        .stat-card .label { color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-card .value { font-size: 28px; font-weight: 700; margin-top: 4px; color: #4f8ef7; }
+
+        .table-wrap {
+            padding: 0 28px 28px;
+        }
+        .table-title {
+            font-size: 16px; font-weight: 600; margin-bottom: 12px;
+        }
+        table {
+            width: 100%; border-collapse: collapse;
+            background: #161b27; border: 1px solid #21293a; border-radius: 10px;
+            overflow: hidden;
+        }
+        th {
+            text-align: left; padding: 12px 16px; font-size: 11px;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            color: #64748b; background: #1a2030; border-bottom: 1px solid #21293a;
+        }
+        td {
+            padding: 12px 16px; font-size: 14px; border-bottom: 1px solid #21293a;
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #1a2030; }
+
+        .badge {
+            display: inline-block; padding: 3px 10px; border-radius: 12px;
+            font-size: 11px; font-weight: 600;
+        }
+        .badge-active { background: #064e3b; color: #34d399; }
+        .badge-disabled { background: #4c1d1d; color: #f87171; }
+        .badge-free { background: #1e2736; color: #64748b; }
+        .badge-pro { background: #1e3a5f; color: #4f8ef7; }
+        .badge-enterprise { background: #3b2e1a; color: #f59e0b; }
+
+        .toggle-btn {
+            background: none; border: 1px solid #21293a; color: #64748b;
+            padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;
+        }
+        .toggle-btn:hover { border-color: #4f8ef7; color: #4f8ef7; }
+
+        .loading { text-align: center; padding: 60px; color: #64748b; }
+        .error-msg { color: #f43f5e; text-align: center; padding: 20px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div style="display:flex; align-items:baseline;">
+            <h1>Admin Dashboard</h1>
+            <span class="sub">Storage Tools</span>
+        </div>
+        <div class="header-right">
+            <a href="/">Back to App</a>
+            <button class="logout-btn" onclick="logout()">Log Out</button>
+        </div>
+    </div>
+
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="label">Total Users</div>
+            <div class="value" id="totalUsers">—</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Searches Today</div>
+            <div class="value" id="searchesToday">—</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Total Searches</div>
+            <div class="value" id="totalSearches">—</div>
+        </div>
+    </div>
+
+    <div class="table-wrap">
+        <div class="table-title">Users</div>
+        <div id="content">
+            <div class="loading">Loading...</div>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('token');
+        if (!token) { window.location.href = '/login'; }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('email');
+            window.location.href = '/login';
+        }
+
+        async function toggleUser(userId) {
+            const res = await fetch(`/api/admin/toggle-user/${userId}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+            });
+            if (res.ok) { loadUsers(); }
+        }
+
+        function tierBadge(tier) {
+            const cls = tier === 'enterprise' ? 'badge-enterprise' : tier === 'pro' ? 'badge-pro' : 'badge-free';
+            return `<span class="badge ${cls}">${tier}</span>`;
+        }
+
+        async function loadUsers() {
+            try {
+                const res = await fetch('/api/admin/users', {
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                if (res.status === 403) {
+                    document.getElementById('content').innerHTML = '<div class="error-msg">Admin access only.</div>';
+                    return;
+                }
+                const data = await res.json();
+
+                document.getElementById('totalUsers').textContent = data.total_users;
+
+                let todayTotal = 0;
+                let allTimeTotal = 0;
+                data.users.forEach(u => {
+                    todayTotal += u.today_searches;
+                    allTimeTotal += u.total_searches;
+                });
+                document.getElementById('searchesToday').textContent = todayTotal;
+                document.getElementById('totalSearches').textContent = allTimeTotal;
+
+                let html = `<table>
+                    <thead><tr>
+                        <th>Email</th>
+                        <th>Joined</th>
+                        <th>Subscription</th>
+                        <th>Searches Today</th>
+                        <th>Total Searches</th>
+                        <th>Last Active</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr></thead><tbody>`;
+
+                data.users.forEach(u => {
+                    const joined = u.created ? new Date(u.created).toLocaleDateString() : '—';
+                    const lastActive = u.last_active === 'never' ? 'Never' : new Date(u.last_active).toLocaleDateString();
+                    const statusBadge = u.active
+                        ? '<span class="badge badge-active">Active</span>'
+                        : '<span class="badge badge-disabled">Disabled</span>';
+                    const toggleLabel = u.active ? 'Disable' : 'Enable';
+
+                    html += `<tr>
+                        <td>${u.email}</td>
+                        <td>${joined}</td>
+                        <td>${tierBadge(u.subscription)}</td>
+                        <td>${u.today_searches}</td>
+                        <td>${u.total_searches}</td>
+                        <td>${lastActive}</td>
+                        <td>${statusBadge}</td>
+                        <td><button class="toggle-btn" onclick="toggleUser(${u.id})">${toggleLabel}</button></td>
+                    </tr>`;
+                });
+
+                html += '</tbody></table>';
+                document.getElementById('content').innerHTML = html;
+            } catch (err) {
+                document.getElementById('content').innerHTML = '<div class="error-msg">Failed to load data.</div>';
+            }
+        }
+
+        loadUsers();
+    </script>
+</body>
+</html>
