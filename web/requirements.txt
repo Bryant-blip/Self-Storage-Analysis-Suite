@@ -5,7 +5,7 @@ jinja2
 python-multipart
 python-jose[cryptography]
 passlib[bcrypt]
-bcrypt==4.0.1
+bcrypt>=4.0.1,<4.1
 sqlalchemy
 psycopg2-binary
 openpyxl
