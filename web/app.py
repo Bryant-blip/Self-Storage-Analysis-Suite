@@ -57,9 +57,6 @@ TOKEN_EXPIRE_HOURS = 24
 # Server-side API key — users never see or touch this
 SERVER_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
-# Rate limiting: max searches per user per day
-DAILY_SEARCH_LIMIT = int(os.environ.get("DAILY_SEARCH_LIMIT", "50"))
-
 # Admin email — only this user can access /api/admin endpoints
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "").lower()
 
@@ -290,16 +287,19 @@ def _get_server_api_key() -> str:
     return SERVER_API_KEY
 
 
-def _check_rate_limit(user_id: int, db: Session):
-    """Check if user has exceeded daily search limit."""
+def _check_rate_limit(user: User, db: Session):
+    """Check if user has exceeded their per-user daily search limit."""
+    limit = user.daily_limit if user.daily_limit is not None else 0
+    if limit <= 0:
+        raise HTTPException(429, "No searches available. Contact administrator for access.")
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     count = db.query(func.count(UsageLog.id)).filter(
-        UsageLog.user_id == user_id,
+        UsageLog.user_id == user.id,
         UsageLog.created_at >= today_start,
         UsageLog.action.in_(["comps", "accurate_estimate"]),
     ).scalar()
-    if count >= DAILY_SEARCH_LIMIT:
-        raise HTTPException(429, f"Daily limit reached ({DAILY_SEARCH_LIMIT} searches/day). Try again tomorrow.")
+    if count >= limit:
+        raise HTTPException(429, f"Daily limit reached ({limit} searches/day). Try again tomorrow.")
 
 
 def _log_usage(user_id: int, action: str, location: str, db: Session):
@@ -378,6 +378,12 @@ async def login(req: LoginRequest, db: Session = Depends(get_db)):
 
     token = create_token(req.email)
     is_admin = (req.email.lower() == ADMIN_EMAIL)
+
+    # Auto-grant admin unlimited searches
+    if is_admin and (user.daily_limit is None or user.daily_limit == 0):
+        user.daily_limit = 99999
+        db.commit()
+
     return {"token": token, "email": req.email, "is_admin": is_admin}
 
 
@@ -409,7 +415,7 @@ async def get_usage(request: Request, db: Session = Depends(get_db)):
 
     return {
         "today": today_count,
-        "daily_limit": DAILY_SEARCH_LIMIT,
+        "daily_limit": user.daily_limit if user.daily_limit is not None else 0,
         "total": total_count,
         "recent": [
             {"action": r.action, "location": r.location or "", "date": r.created_at.isoformat()}
@@ -449,6 +455,7 @@ async def admin_users(request: Request, db: Session = Depends(get_db)):
             "created": u.created_at.isoformat() if u.created_at else "",
             "active": u.is_active,
             "subscription": u.subscription_tier or "free",
+            "daily_limit": u.daily_limit if u.daily_limit is not None else 0,
             "total_searches": total_searches,
             "today_searches": today_searches,
             "last_active": last_use[0].isoformat() if last_use else "never",
@@ -469,6 +476,40 @@ async def admin_toggle_user(user_id: int, request: Request, db: Session = Depend
     user.is_active = not user.is_active
     db.commit()
     return {"ok": True, "email": user.email, "active": user.is_active}
+
+
+@app.post("/api/admin/set-tier/{user_id}")
+async def admin_set_tier(user_id: int, request: Request, db: Session = Depends(get_db)):
+    email = get_current_user(request)
+    if ADMIN_EMAIL and email.lower() != ADMIN_EMAIL:
+        raise HTTPException(403, "Admin access only")
+    body = await request.json()
+    tier = body.get("tier", "free")
+    if tier not in ("free", "pro", "enterprise"):
+        raise HTTPException(400, "Invalid tier")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+    user.subscription_tier = tier
+    db.commit()
+    return {"ok": True, "email": user.email, "tier": tier}
+
+
+@app.post("/api/admin/set-limit/{user_id}")
+async def admin_set_limit(user_id: int, request: Request, db: Session = Depends(get_db)):
+    email = get_current_user(request)
+    if ADMIN_EMAIL and email.lower() != ADMIN_EMAIL:
+        raise HTTPException(403, "Admin access only")
+    body = await request.json()
+    limit = int(body.get("limit", 0))
+    if limit < 0:
+        raise HTTPException(400, "Limit must be >= 0")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+    user.daily_limit = limit
+    db.commit()
+    return {"ok": True, "email": user.email, "daily_limit": limit}
 
 
 # ── Quick Estimate (no API call) ─────────────────────────────────────────────
@@ -545,7 +586,7 @@ async def run_comps(req: CompsRequest, request: Request, db: Session = Depends(g
     if not user:
         raise HTTPException(404, "User not found")
 
-    _check_rate_limit(user.id, db)
+    _check_rate_limit(user, db)
     api_key = _get_server_api_key()
 
     if req.radius > 7:
@@ -614,7 +655,7 @@ async def run_accurate_estimate(req: AccurateEstimateRequest, request: Request, 
     if not user:
         raise HTTPException(404, "User not found")
 
-    _check_rate_limit(user.id, db)
+    _check_rate_limit(user, db)
     api_key = _get_server_api_key()
 
     if not req.city.strip():

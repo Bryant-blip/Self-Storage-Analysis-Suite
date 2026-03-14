@@ -82,6 +82,19 @@
         }
         .toggle-btn:hover { border-color: #4f8ef7; color: #4f8ef7; }
 
+        .tier-select {
+            background: #0d1117; border: 1px solid #21293a; color: #e2e8f0;
+            padding: 4px 8px; border-radius: 6px; font-size: 12px; cursor: pointer;
+        }
+        .tier-select:focus { border-color: #4f8ef7; outline: none; }
+
+        .limit-input {
+            background: #0d1117; border: 1px solid #21293a; color: #e2e8f0;
+            padding: 4px 8px; border-radius: 6px; font-size: 12px; width: 60px;
+            text-align: center;
+        }
+        .limit-input:focus { border-color: #4f8ef7; outline: none; }
+
         .loading { text-align: center; padding: 60px; color: #64748b; }
         .error-msg { color: #f43f5e; text-align: center; padding: 20px; }
     </style>
@@ -138,9 +151,28 @@
             if (res.ok) { loadUsers(); }
         }
 
-        function tierBadge(tier) {
-            const cls = tier === 'enterprise' ? 'badge-enterprise' : tier === 'pro' ? 'badge-pro' : 'badge-free';
-            return `<span class="badge ${cls}">${tier}</span>`;
+        async function setTier(userId, tier) {
+            await fetch(`/api/admin/set-tier/${userId}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tier }),
+            });
+        }
+
+        async function setLimit(userId, limit) {
+            await fetch(`/api/admin/set-limit/${userId}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ limit: parseInt(limit) }),
+            });
+        }
+
+        function tierSelect(userId, current) {
+            const tiers = ['free', 'pro', 'enterprise'];
+            let opts = tiers.map(t =>
+                `<option value="${t}" ${t === current ? 'selected' : ''}>${t}</option>`
+            ).join('');
+            return `<select class="tier-select" onchange="setTier(${userId}, this.value)">${opts}</select>`;
         }
 
         async function loadUsers() {
@@ -169,9 +201,10 @@
                     <thead><tr>
                         <th>Email</th>
                         <th>Joined</th>
-                        <th>Subscription</th>
-                        <th>Searches Today</th>
-                        <th>Total Searches</th>
+                        <th>Tier</th>
+                        <th>Daily Limit</th>
+                        <th>Today</th>
+                        <th>Total</th>
                         <th>Last Active</th>
                         <th>Status</th>
                         <th>Action</th>
@@ -188,7 +221,9 @@
                     html += `<tr>
                         <td>${u.email}</td>
                         <td>${joined}</td>
-                        <td>${tierBadge(u.subscription)}</td>
+                        <td>${tierSelect(u.id, u.subscription)}</td>
+                        <td><input type="number" class="limit-input" value="${u.daily_limit}" min="0"
+                            onchange="setLimit(${u.id}, this.value)"></td>
                         <td>${u.today_searches}</td>
                         <td>${u.total_searches}</td>
                         <td>${lastActive}</td>
