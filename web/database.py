@@ -9,7 +9,7 @@ Set DATABASE_URL env var to switch:
 import os
 from datetime import datetime
 
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Boolean, text, inspect
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./storage_tools.db")
@@ -50,9 +50,27 @@ class UsageLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-# ── Create tables ────────────────────────────────────────────────────────────
+# ── Create tables & migrate missing columns ─────────────────────────────────
 def init_db():
     Base.metadata.create_all(bind=engine)
+
+    # Add columns that may be missing from older database schemas
+    insp = inspect(engine)
+    if insp.has_table("users"):
+        existing = {col["name"] for col in insp.get_columns("users")}
+        migrations = []
+        if "is_active" not in existing:
+            migrations.append("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE")
+        if "subscription_tier" not in existing:
+            migrations.append("ALTER TABLE users ADD COLUMN subscription_tier VARCHAR DEFAULT 'free'")
+        if "subscription_expires" not in existing:
+            migrations.append("ALTER TABLE users ADD COLUMN subscription_expires TIMESTAMP")
+        if "api_key_encrypted" not in existing:
+            migrations.append("ALTER TABLE users ADD COLUMN api_key_encrypted VARCHAR")
+        if migrations:
+            with engine.begin() as conn:
+                for sql in migrations:
+                    conn.execute(text(sql))
 
 
 def get_db():
