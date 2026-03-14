@@ -351,14 +351,9 @@ async def admin_page(request: Request):
 # ── Auth API ─────────────────────────────────────────────────────────────────
 @app.post("/api/register")
 async def register(req: RegisterRequest, db: Session = Depends(get_db)):
-    global ADMIN_EMAIL
-
     existing = db.query(User).filter(User.email == req.email).first()
     if existing:
         raise HTTPException(400, "Email already registered")
-
-    # First user to register becomes admin
-    is_first_user = db.query(func.count(User.id)).scalar() == 0
 
     user = User(
         email=req.email,
@@ -367,9 +362,6 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-
-    if is_first_user and not ADMIN_EMAIL:
-        ADMIN_EMAIL = req.email
 
     token = create_token(req.email)
     is_admin = (req.email == ADMIN_EMAIL)
