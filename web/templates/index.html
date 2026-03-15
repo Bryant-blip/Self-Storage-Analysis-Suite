@@ -343,7 +343,6 @@
             const sf = parseFloat(document.getElementById('costSF').value.replace(/,/g, ''));
             const city = document.getElementById('costCity').value.trim();
             const quality = document.getElementById('costQuality').value;
-            const stories = parseInt(document.getElementById('costStories').value) || 1;
 
             if (!sf || sf <= 0) { alert('Please enter a valid SF'); return; }
 
@@ -356,7 +355,6 @@
                         sf: sf,
                         city: city,
                         quality: quality,
-                        stories: stories,
                     }),
                 });
 
