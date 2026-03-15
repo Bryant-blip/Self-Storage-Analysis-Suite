@@ -334,7 +334,6 @@ class QuickEstimateRequest(BaseModel):
     sf: float
     city: str = ""
     quality: str = "Average"
-    stories: int = 1
 
 class CompsRequest(BaseModel):
     location: str
@@ -538,7 +537,6 @@ async def quick_estimate(req: QuickEstimateRequest, request: Request, db: Sessio
 
     btype = req.building_type
     quality = req.quality
-    stories = max(1, min(req.stories, 5)) if btype == "cc" else 1
     q_mult = QUALITY_MULT.get(quality, 1.0)
 
     loc_factor, matched_city = _lookup_location_factor(req.city)
@@ -546,20 +544,11 @@ async def quick_estimate(req: QuickEstimateRequest, request: Request, db: Sessio
     per_sf_items = CC_COSTS if btype == "cc" else DRIVEUP_COSTS
     lump_items = CC_LUMP if btype == "cc" else DRIVEUP_LUMP
 
-    # Multi-story cost multipliers for CC buildings
-    STORY_ADJUSTMENTS = {
-        "Steel Structure":       lambda s: 1.0 + (s - 1) * 0.15,   # +15% per additional story
-        "Concrete Slab / Foundation": lambda s: 1.0 + (s - 1) * 0.20,  # heavier foundation
-        "Fire Suppression":      lambda s: 1.0 + (s - 1) * 0.10,   # more complex per story
-        "Electrical & Lighting": lambda s: 1.0 + (s - 1) * 0.08,   # more risers/panels
-    }
-
     rows = []
     total_hard = 0.0
 
     for name, base_psf in per_sf_items:
-        story_mult = STORY_ADJUSTMENTS.get(name, lambda s: 1.0)(stories) if stories > 1 else 1.0
-        adj_psf = base_psf * q_mult * loc_factor * story_mult
+        adj_psf = base_psf * q_mult * loc_factor
         cost = adj_psf * sf
         rows.append({"name": name, "psf": f"${adj_psf:,.2f}", "cost": f"${cost:,.0f}", "cost_raw": cost})
         total_hard += cost
@@ -569,18 +558,6 @@ async def quick_estimate(req: QuickEstimateRequest, request: Request, db: Sessio
         if cost > 0:
             rows.append({"name": name, "psf": note, "cost": f"${cost:,.0f}", "cost_raw": cost})
             total_hard += cost
-
-    # Multi-story additions (CC only)
-    if stories > 1 and btype == "cc":
-        # Additional elevators for large multi-story buildings
-        if stories >= 3 and sf > 40000:
-            extra_elev_cost = 120000 * q_mult * loc_factor
-            rows.append({"name": "Additional Elevator", "psf": "Lump sum", "cost": f"${extra_elev_cost:,.0f}", "cost_raw": extra_elev_cost})
-            total_hard += extra_elev_cost
-        # Stairwells — 2 required per building code, ~$35k each
-        stairwell_cost = 2 * 35000 * q_mult * loc_factor
-        rows.append({"name": f"Stairwells ({stories}-story)", "psf": "2 required", "cost": f"${stairwell_cost:,.0f}", "cost_raw": stairwell_cost})
-        total_hard += stairwell_cost
 
     soft_items = []
     total_soft = 0.0
@@ -599,7 +576,6 @@ async def quick_estimate(req: QuickEstimateRequest, request: Request, db: Sessio
     return {
         "building_type": "Climate Controlled" if btype == "cc" else "Drive-Up",
         "sf": sf,
-        "stories": stories,
         "city": req.city or "National Avg",
         "quality": quality,
         "location_factor": loc_factor,
