@@ -237,6 +237,16 @@
                             <option value="Premium">Premium</option>
                         </select>
                     </div>
+                    <div class="form-group" id="storiesGroup" style="display:none;">
+                        <label>Stories</label>
+                        <select id="costStories" style="width:80px;">
+                            <option value="1" selected>1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                        </select>
+                    </div>
                     <div class="form-group">
                         <button class="btn btn-orange" onclick="quickEstimate()">&#9654; Quick Estimate</button>
                     </div>
@@ -317,6 +327,8 @@
             buildingType = t;
             document.getElementById('togDriveup').classList.toggle('active', t === 'driveup');
             document.getElementById('togCC').classList.toggle('active', t === 'cc');
+            document.getElementById('storiesGroup').style.display = t === 'cc' ? '' : 'none';
+            if (t === 'driveup') document.getElementById('costStories').value = '1';
         }
 
         // ── Status ──
@@ -331,6 +343,7 @@
             const sf = parseFloat(document.getElementById('costSF').value.replace(/,/g, ''));
             const city = document.getElementById('costCity').value.trim();
             const quality = document.getElementById('costQuality').value;
+            const stories = parseInt(document.getElementById('costStories').value) || 1;
 
             if (!sf || sf <= 0) { alert('Please enter a valid SF'); return; }
 
@@ -343,6 +356,7 @@
                         sf: sf,
                         city: city,
                         quality: quality,
+                        stories: stories,
                     }),
                 });
 
@@ -480,6 +494,7 @@
             const sf = parseFloat(document.getElementById('costSF').value.replace(/,/g, ''));
             const city = document.getElementById('costCity').value.trim();
             const quality = document.getElementById('costQuality').value;
+            const stories = parseInt(document.getElementById('costStories').value) || 1;
 
             if (!sf || sf <= 0) { alert('Please enter a valid SF'); return; }
             if (!city) { alert('Please enter a city for the accurate estimate'); return; }
@@ -502,6 +517,7 @@
                         sf: sf,
                         city: city,
                         quality: quality,
+                        stories: stories,
                     }),
                 });
 
