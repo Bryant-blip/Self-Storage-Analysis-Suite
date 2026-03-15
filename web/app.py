@@ -218,13 +218,24 @@ Write an Excel file using openpyxl with these details:
 Tab 1 "Cost Estimate":
 Row 1: "Self Storage Construction Cost Estimate" (bold, size 14)
 Row 2: Building Type
-Row 3: Total SF
+Row 3: Total SF — put the numeric SF value in cell B3
 Row 4: City + location factor found
 Row 5: Quality level
 Row 6: Date + sources used
 Row 7: blank
 Row 8: Header row (bold, #BDD7EE fill): Component | $/SF | Total Cost
 Rows 9+: One row per cost component with real researched $/SF values
+
+CRITICAL MATH RULES — follow these exactly:
+- Column B = $/SF (numeric value, formatted as currency)
+- Column C = Total Cost — MUST use an Excel formula: =B{row}*$B$3
+  Do NOT type a hardcoded number in column C. Every Total Cost cell MUST be a formula.
+- Hard Cost Subtotal row: Column C = SUM formula of all hard cost rows above
+- Each Soft Cost row: Column C = formula referencing Hard Cost Subtotal * percentage
+- TOTAL ESTIMATED COST row: = Hard Cost Subtotal + Soft Cost Subtotal (formula)
+- TOTAL $/SF row: = TOTAL / $B$3 (formula)
+- Double-check: $/SF * Total SF MUST equal Total Cost for every row. Using formulas guarantees this.
+
 Then: Hard Cost Subtotal (bold)
 Then: Itemized Soft Costs (~22.5% total: A&E 5%, Permits 2.5%, Geotech 0.8%, Survey 0.4%, Legal 0.8%, Insurance 0.7%, Loan Interest 4%, Property Tax 0.8%, Contingency 7.5%)
 Then: TOTAL ESTIMATED COST (bold, #E2EFDA fill) with $/SF and total
@@ -238,6 +249,7 @@ List every URL and source used with what data came from each.
 - Always include the source of each number.
 - Currency format on all dollar columns.
 - Auto-width all columns.
+- NEVER hardcode Total Cost values — always use formulas so the math is guaranteed correct.
 """
 
 
