@@ -257,6 +257,11 @@
                             <option value="5">5</option>
                         </select>
                     </div>
+
+                    <div class="form-group">
+                        <label>Land Cost ($)</label>
+                        <input type="text" id="costLand" placeholder="Optional" style="width:130px;">
+                    </div>
                     <div class="form-group">
                         <label>Loan Rate %</label>
                         <input type="text" id="costLoanRate" value="8.5" style="width:80px;">
@@ -369,6 +374,7 @@
             const propertyType = document.getElementById('costPropertyType').value;
             const loanRate = parseFloat(document.getElementById('costLoanRate').value) || 0;
             const constMonths = parseInt(document.getElementById('costConstMonths').value) || 12;
+            const landCost = parseFloat(document.getElementById('costLand').value.replace(/,/g, '')) || 0;
 
             if (!sf || sf <= 0) { alert('Please enter a valid SF'); return; }
 
@@ -383,6 +389,7 @@
                         quality: quality,
                         loan_rate: loanRate,
                         const_months: constMonths,
+                        land_cost: landCost,
                     }),
                 });
 
@@ -405,6 +412,7 @@
             const propertyType = document.getElementById('costPropertyType').value;
             const loanRate = parseFloat(document.getElementById('costLoanRate').value) || 0;
             const constMonths = parseInt(document.getElementById('costConstMonths').value) || 12;
+            const landCost = parseFloat(document.getElementById('costLand').value.replace(/,/g, '')) || 0;
 
             try {
                 const res = await fetch('/api/quick-estimate-export', {
@@ -417,6 +425,7 @@
                         quality: quality,
                         loan_rate: loanRate,
                         const_months: constMonths,
+                        land_cost: landCost,
                     }),
                 });
                 if (res.status === 401) { window.location.href = '/login'; return; }
@@ -466,6 +475,15 @@
 
             // Soft cost subtotal
             html += `<tr class="subtotal"><td>Soft Cost Subtotal</td><td></td><td class="mono right">${data.total_soft}</td></tr>`;
+
+            // Land & Acquisition rows (only if provided)
+            if (data.land_cost_rows && data.land_cost_rows.length > 0) {
+                html += `<tr class="subtotal"><td colspan="3" style="color:#f59e0b; padding-top:16px;">Land & Acquisition Costs</td></tr>`;
+                data.land_cost_rows.forEach(row => {
+                    html += `<tr><td>${row.name}</td><td class="mono right">${row.note}</td><td class="mono right">${row.cost}</td></tr>`;
+                });
+                html += `<tr class="subtotal"><td>Land & Acquisition Subtotal</td><td></td><td class="mono right">${data.total_land}</td></tr>`;
+            }
 
             // Grand total
             html += `<tr class="grand-total"><td>TOTAL ESTIMATED COST</td><td class="mono right">${data.total_psf} / SF</td><td class="mono right">${data.grand_total}</td></tr>`;
@@ -560,6 +578,7 @@
             const propertyType = document.getElementById('costPropertyType').value;
             const loanRate = parseFloat(document.getElementById('costLoanRate').value) || 0;
             const constMonths = parseInt(document.getElementById('costConstMonths').value) || 12;
+            const landCost = parseFloat(document.getElementById('costLand').value.replace(/,/g, '')) || 0;
 
             if (!sf || sf <= 0) { alert('Please enter a valid SF'); return; }
             if (!city) { alert('Please enter a city for the accurate estimate'); return; }
@@ -585,6 +604,7 @@
                         stories: stories,
                         loan_rate: loanRate,
                         const_months: constMonths,
+                        land_cost: landCost,
                     }),
                 });
 
