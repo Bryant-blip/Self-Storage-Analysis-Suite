@@ -713,6 +713,205 @@ async def quick_estimate(req: QuickEstimateRequest, request: Request, db: Sessio
     }
 
 
+# ── Quick Estimate Excel Export ───────────────────────────────────────────────
+@app.post("/api/quick-estimate-export")
+async def quick_estimate_export(req: QuickEstimateRequest, request: Request, db: Session = Depends(get_db)):
+    """Generate an Excel file from a quick estimate with a Sources tab."""
+    email = get_current_user(request)
+
+    sf = req.sf
+    if sf <= 0:
+        raise HTTPException(400, "SF must be positive")
+
+    btype = req.building_type
+    quality = req.quality
+    q_mult = QUALITY_MULT.get(quality, 1.0)
+    loc_factor, matched_city = _lookup_location_factor(req.city)
+
+    ptype = PROPERTY_TYPES.get(btype)
+    if not ptype:
+        raise HTTPException(400, f"Unknown property type: {btype}")
+
+    loan_rate = max(0, min(req.loan_rate, 25))
+    const_months = max(1, min(req.const_months, 48))
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, numbers, Alignment
+
+    wb = Workbook()
+
+    # ── Tab 1: Cost Estimate ──
+    ws = wb.active
+    ws.title = "Cost Estimate"
+
+    header_font = Font(bold=True, size=14)
+    bold_font = Font(bold=True)
+    currency_fmt = '#,##0'
+    currency_psf_fmt = '$#,##0.00'
+    header_fill = PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="solid")
+    total_fill = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
+
+    ws.merge_cells("A1:C1")
+    ws["A1"] = "Construction Cost Estimate — Quick Estimate"
+    ws["A1"].font = header_font
+
+    ws["A2"] = "Property Type:"
+    ws["B2"] = ptype["label"]
+    ws["A3"] = "Total SF:"
+    ws["B3"] = sf
+    ws["B3"].number_format = '#,##0'
+    ws["A4"] = "City:"
+    ws["B4"] = f"{req.city or 'National Avg'} (Location Factor: {loc_factor:.2f}x{' — ' + matched_city if matched_city else ''})"
+    ws["A5"] = "Quality:"
+    ws["B5"] = quality
+    ws["A6"] = "Date:"
+    ws["B6"] = date.today().strftime("%B %d, %Y")
+    ws["A7"] = "Loan Rate:"
+    ws["B7"] = f"{loan_rate:.1f}% annual × {const_months} months"
+
+    row = 9
+    for col, label in [(1, "Component"), (2, "$/SF"), (3, "Total Cost")]:
+        cell = ws.cell(row=row, column=col, value=label)
+        cell.font = bold_font
+        cell.fill = header_fill
+    row += 1
+
+    hard_start = row
+    total_hard = 0.0
+    for name, base_psf in ptype["per_sf"]:
+        adj_psf = base_psf * q_mult * loc_factor
+        cost = adj_psf * sf
+        ws.cell(row=row, column=1, value=name)
+        ws.cell(row=row, column=2, value=adj_psf).number_format = currency_psf_fmt
+        ws.cell(row=row, column=3, value=cost).number_format = currency_fmt
+        total_hard += cost
+        row += 1
+
+    for name, note, calc_fn in ptype["lump"]:
+        cost = calc_fn(sf) * q_mult * loc_factor
+        if cost > 0:
+            ws.cell(row=row, column=1, value=name)
+            ws.cell(row=row, column=2, value=note)
+            ws.cell(row=row, column=3, value=cost).number_format = currency_fmt
+            total_hard += cost
+            row += 1
+
+    # Hard cost subtotal
+    ws.cell(row=row, column=1, value="HARD COST SUBTOTAL").font = bold_font
+    ws.cell(row=row, column=2, value=total_hard / sf if sf > 0 else 0).number_format = currency_psf_fmt
+    ws.cell(row=row, column=2).font = bold_font
+    ws.cell(row=row, column=3, value=total_hard).number_format = currency_fmt
+    ws.cell(row=row, column=3).font = bold_font
+    row += 2
+
+    # Soft costs header
+    ws.cell(row=row, column=1, value="Soft Costs").font = bold_font
+    ws.cell(row=row, column=2, value="% of Hard").font = bold_font
+    row += 1
+
+    total_soft = 0.0
+    loan_interest = total_hard * (loan_rate / 100) * (const_months / 12) * 0.5
+
+    for name, pct in SOFT_COSTS:
+        if name == "Construction Loan Interest":
+            ws.cell(row=row, column=1, value=f"Construction Loan Interest ({loan_rate:.1f}% × {const_months}mo)")
+            effective_pct = loan_interest / total_hard if total_hard > 0 else 0
+            ws.cell(row=row, column=2, value=f"{effective_pct:.1%}")
+            ws.cell(row=row, column=3, value=loan_interest).number_format = currency_fmt
+            total_soft += loan_interest
+        else:
+            amt = total_hard * pct
+            ws.cell(row=row, column=1, value=name)
+            ws.cell(row=row, column=2, value=f"{pct:.1%}")
+            ws.cell(row=row, column=3, value=amt).number_format = currency_fmt
+            total_soft += amt
+        row += 1
+
+    # Soft cost subtotal
+    ws.cell(row=row, column=1, value="SOFT COST SUBTOTAL").font = bold_font
+    ws.cell(row=row, column=3, value=total_soft).number_format = currency_fmt
+    ws.cell(row=row, column=3).font = bold_font
+    row += 2
+
+    # Grand total
+    grand_total = total_hard + total_soft
+    for col in range(1, 4):
+        ws.cell(row=row, column=col).fill = total_fill
+        ws.cell(row=row, column=col).font = bold_font
+    ws.cell(row=row, column=1, value="TOTAL ESTIMATED COST")
+    ws.cell(row=row, column=2, value=grand_total / sf if sf > 0 else 0).number_format = currency_psf_fmt
+    ws.cell(row=row, column=3, value=grand_total).number_format = currency_fmt
+
+    # Auto-width columns
+    ws.column_dimensions["A"].width = 42
+    ws.column_dimensions["B"].width = 18
+    ws.column_dimensions["C"].width = 18
+
+    # ── Tab 2: Sources & Assumptions ──
+    ws2 = wb.create_sheet("Sources & Assumptions")
+    ws2["A1"] = "Sources & Assumptions"
+    ws2["A1"].font = header_font
+
+    ws2["A3"] = "Category"
+    ws2["B3"] = "Assumption"
+    ws2["C3"] = "Source"
+    for col in range(1, 4):
+        ws2.cell(row=3, column=col).font = bold_font
+        ws2.cell(row=3, column=col).fill = header_fill
+
+    sources = [
+        ("Base Cost Data", "Per-SF costs are national averages for this property type",
+         "RSMeans Building Construction Cost Data 2024/2025 — https://www.rsmeans.com"),
+        ("Location Factor", f"{loc_factor:.2f}x applied to {matched_city or 'national average'}",
+         "USACE Area Cost Factors (PAX) — https://www.usace.army.mil/Cost-Engineering/"),
+        ("Quality Multiplier", f"{quality} = {q_mult:.2f}x adjustment",
+         "RSMeans quality adjustment methodology — Economy (0.85x), Average (1.00x), Premium (1.15x)"),
+        ("A&E (5%)", "Architectural & Engineering fees as % of hard costs",
+         "AIA Compensation Report — https://www.aia.org/resources/compensation-report"),
+        ("Permits & Impact Fees (2.5%)", "Building permits and municipal impact fees",
+         "National Association of Home Builders — https://www.nahb.org/advocacy/impact-fees"),
+        ("Geotech / Environmental (0.8%)", "Geotechnical study, Phase I/II ESA",
+         "ASTM E1527-21 standard practice — typical Phase I ESA cost ranges"),
+        ("Survey & Land Planning (0.4%)", "ALTA survey, site planning",
+         "NSPS/ALTA Standards — https://www.nsps.us.com"),
+        ("Legal & Closing (0.8%)", "Legal fees, title, closing costs",
+         "Industry standard — varies by deal complexity and jurisdiction"),
+        ("Builder's Risk Insurance (0.7%)", "Construction-period insurance coverage",
+         "IRMI (International Risk Management Institute) — https://www.irmi.com"),
+        ("Construction Loan Interest", f"{loan_rate:.1f}% annual rate × {const_months} months × 50% avg draw",
+         "User-entered rate. Formula: hard costs × rate × (months/12) × 0.5 average outstanding balance"),
+        ("Property Tax During Const. (0.8%)", "Ad valorem tax on land during construction",
+         "County assessor rates — varies by jurisdiction"),
+        ("Contingency (7.5%)", "Unforeseen conditions, change orders",
+         "AACE International Recommended Practice 18R-97 — Class 3 estimate contingency range"),
+    ]
+
+    for i, (cat, assumption, source) in enumerate(sources, start=4):
+        ws2.cell(row=i, column=1, value=cat)
+        ws2.cell(row=i, column=2, value=assumption)
+        ws2.cell(row=i, column=3, value=source)
+
+    disclaimer_row = len(sources) + 6
+    ws2.cell(row=disclaimer_row, column=1, value="DISCLAIMER").font = bold_font
+    ws2.cell(row=disclaimer_row + 1, column=1,
+             value="This is a preliminary estimate based on published cost data and standard industry assumptions. "
+                   "Actual costs will vary based on site conditions, local labor markets, material pricing, "
+                   "and project-specific requirements. Verify all figures with local contractors and consultants.")
+
+    ws2.column_dimensions["A"].width = 35
+    ws2.column_dimensions["B"].width = 55
+    ws2.column_dimensions["C"].width = 75
+
+    # Save and return
+    safe_city = (req.city or "national").replace(" ", "_").replace(",", "")
+    filename = f"quick_estimate_{safe_city}_{date.today().strftime('%b-%d-%y')}.xlsx"
+    filepath = os.path.join(OUTPUT_DIR, filename)
+    wb.save(filepath)
+
+    return FileResponse(filepath, filename=filename,
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
 # ── Market Comps (SSE stream) ────────────────────────────────────────────────
 @app.post("/api/comps")
 async def run_comps(req: CompsRequest, request: Request, db: Session = Depends(get_db)):

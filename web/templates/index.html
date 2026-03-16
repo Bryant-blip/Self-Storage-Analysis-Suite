@@ -289,6 +289,10 @@
                 </div>
             </div>
 
+            <div style="margin-top:12px; text-align:right; display:none;" id="quickExportWrap">
+                <button type="button" class="btn btn-success" onclick="exportQuickEstimate()">Export to Excel &#9654;</button>
+            </div>
+
             <!-- Accurate estimate log (hidden until running) -->
             <div id="accurateLogWrap" style="display:none; margin-top:16px;">
                 <span style="font-size:13px; font-weight:600; color:#64748b;">Agent Log</span>
@@ -387,9 +391,45 @@
 
                 const data = await res.json();
                 renderCostResults(data);
+                document.getElementById('quickExportWrap').style.display = 'block';
                 setStatus(`Estimate: ${data.building_type} \u2014 ${sf.toLocaleString()} SF \u2014 ${data.grand_total} total (${data.total_psf}/SF)`, '#34d399');
             } catch (err) {
                 alert('Error: ' + err.message);
+            }
+        }
+
+        async function exportQuickEstimate() {
+            const sf = parseFloat(document.getElementById('costSF').value.replace(/,/g, ''));
+            const city = document.getElementById('costCity').value.trim();
+            const quality = document.getElementById('costQuality').value;
+            const propertyType = document.getElementById('costPropertyType').value;
+            const loanRate = parseFloat(document.getElementById('costLoanRate').value) || 0;
+            const constMonths = parseInt(document.getElementById('costConstMonths').value) || 12;
+
+            try {
+                const res = await fetch('/api/quick-estimate-export', {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: JSON.stringify({
+                        building_type: propertyType,
+                        sf: sf,
+                        city: city,
+                        quality: quality,
+                        loan_rate: loanRate,
+                        const_months: constMonths,
+                    }),
+                });
+                if (res.status === 401) { window.location.href = '/login'; return; }
+                if (!res.ok) { alert('Export failed'); return; }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `quick_estimate_${city.replace(/[, ]/g, '_') || 'national'}.xlsx`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                alert('Export error: ' + err.message);
             }
         }
 
