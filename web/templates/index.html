@@ -258,6 +258,16 @@
                         </select>
                     </div>
                     <div class="form-group">
+                        <label>Loan Rate %</label>
+                        <input type="text" id="costLoanRate" value="8.5" style="width:80px;">
+                    </div>
+                    <div class="form-group">
+                        <label>Const. Months</label>
+                        <input type="text" id="costConstMonths" value="12" style="width:80px;">
+                    </div>
+                </div>
+                <div class="form-row" style="margin-top:12px;">
+                    <div class="form-group">
                         <button type="button" class="btn btn-orange" onclick="quickEstimate()">&#9654; Quick Estimate</button>
                     </div>
                     <div class="form-group">
@@ -353,6 +363,8 @@
             const city = document.getElementById('costCity').value.trim();
             const quality = document.getElementById('costQuality').value;
             const propertyType = document.getElementById('costPropertyType').value;
+            const loanRate = parseFloat(document.getElementById('costLoanRate').value) || 0;
+            const constMonths = parseInt(document.getElementById('costConstMonths').value) || 12;
 
             if (!sf || sf <= 0) { alert('Please enter a valid SF'); return; }
 
@@ -365,6 +377,8 @@
                         sf: sf,
                         city: city,
                         quality: quality,
+                        loan_rate: loanRate,
+                        const_months: constMonths,
                     }),
                 });
 
@@ -504,6 +518,8 @@
             const quality = document.getElementById('costQuality').value;
             const stories = parseInt(document.getElementById('costStories').value) || 1;
             const propertyType = document.getElementById('costPropertyType').value;
+            const loanRate = parseFloat(document.getElementById('costLoanRate').value) || 0;
+            const constMonths = parseInt(document.getElementById('costConstMonths').value) || 12;
 
             if (!sf || sf <= 0) { alert('Please enter a valid SF'); return; }
             if (!city) { alert('Please enter a city for the accurate estimate'); return; }
@@ -527,6 +543,8 @@
                         city: city,
                         quality: quality,
                         stories: stories,
+                        loan_rate: loanRate,
+                        const_months: constMonths,
                     }),
                 });
 
