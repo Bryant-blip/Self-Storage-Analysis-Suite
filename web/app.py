@@ -434,6 +434,7 @@ class QuickEstimateRequest(BaseModel):
     quality: str = "Average"
     loan_rate: float = 8.5      # annual interest rate %
     const_months: int = 12      # construction period in months
+    land_cost: float = 0        # user-entered land price ($)
 
 class CompsRequest(BaseModel):
     location: str
@@ -447,6 +448,7 @@ class AccurateEstimateRequest(BaseModel):
     stories: int = 1
     loan_rate: float = 8.5
     const_months: int = 12
+    land_cost: float = 0
 
 
 # ── Pages ────────────────────────────────────────────────────────────────────
@@ -688,7 +690,31 @@ async def quick_estimate(req: QuickEstimateRequest, request: Request, db: Sessio
             soft_items.append({"name": name, "pct": f"{pct:.1%}", "cost": f"${amt:,.0f}", "cost_raw": amt})
             total_soft += amt
 
-    grand_total = total_hard + total_soft
+    # ── Land & Acquisition Costs (only when user provides land cost) ──
+    land_cost = max(0, req.land_cost)
+    land_rows = []
+    total_land = 0.0
+    if land_cost > 0:
+        land_rows.append({"name": "Land Purchase Price", "note": "User entered", "cost": f"${land_cost:,.0f}", "cost_raw": land_cost})
+        total_land += land_cost
+
+        title_closing = land_cost * 0.015  # ~1.5% of land
+        land_rows.append({"name": "Title & Closing Costs", "note": "~1.5% of land", "cost": f"${title_closing:,.0f}", "cost_raw": title_closing})
+        total_land += title_closing
+
+        phase1_esa = 4000.0
+        land_rows.append({"name": "Phase I ESA", "note": "Lump sum", "cost": f"${phase1_esa:,.0f}", "cost_raw": phase1_esa})
+        total_land += phase1_esa
+
+        alta_survey = 7500.0
+        land_rows.append({"name": "ALTA Survey", "note": "Lump sum", "cost": f"${alta_survey:,.0f}", "cost_raw": alta_survey})
+        total_land += alta_survey
+
+        utility_taps = 15000.0
+        land_rows.append({"name": "Utility Tap / Impact Fees", "note": "Lump sum", "cost": f"${utility_taps:,.0f}", "cost_raw": utility_taps})
+        total_land += utility_taps
+
+    grand_total = total_hard + total_soft + total_land
     total_psf = grand_total / sf if sf > 0 else 0
 
     # Log usage (free action, but still track it)
@@ -707,6 +733,9 @@ async def quick_estimate(req: QuickEstimateRequest, request: Request, db: Sessio
         "total_hard_raw": total_hard,
         "soft_cost_rows": soft_items,
         "total_soft": f"${total_soft:,.0f}",
+        "land_cost_rows": land_rows,
+        "total_land": f"${total_land:,.0f}",
+        "total_land_raw": total_land,
         "grand_total": f"${grand_total:,.0f}",
         "grand_total_raw": grand_total,
         "total_psf": f"${total_psf:,.2f}",
@@ -833,8 +862,38 @@ async def quick_estimate_export(req: QuickEstimateRequest, request: Request, db:
     ws.cell(row=row, column=3).font = bold_font
     row += 2
 
+    # Land & Acquisition Costs (only when user provides land cost)
+    land_cost = max(0, req.land_cost)
+    total_land = 0.0
+    if land_cost > 0:
+        land_fill = PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid")
+        for col, label in [(1, "Land & Acquisition Costs"), (2, "Note"), (3, "Total Cost")]:
+            cell = ws.cell(row=row, column=col, value=label)
+            cell.font = bold_font
+            cell.fill = land_fill
+        row += 1
+
+        land_items = [
+            ("Land Purchase Price", "User entered", land_cost),
+            ("Title & Closing Costs", "~1.5% of land", land_cost * 0.015),
+            ("Phase I ESA", "Lump sum", 4000.0),
+            ("ALTA Survey", "Lump sum", 7500.0),
+            ("Utility Tap / Impact Fees", "Lump sum", 15000.0),
+        ]
+        for name, note, cost in land_items:
+            ws.cell(row=row, column=1, value=name)
+            ws.cell(row=row, column=2, value=note)
+            ws.cell(row=row, column=3, value=cost).number_format = currency_fmt
+            total_land += cost
+            row += 1
+
+        ws.cell(row=row, column=1, value="LAND & ACQUISITION SUBTOTAL").font = bold_font
+        ws.cell(row=row, column=3, value=total_land).number_format = currency_fmt
+        ws.cell(row=row, column=3).font = bold_font
+        row += 2
+
     # Grand total
-    grand_total = total_hard + total_soft
+    grand_total = total_hard + total_soft + total_land
     for col in range(1, 4):
         ws.cell(row=row, column=col).fill = total_fill
         ws.cell(row=row, column=col).font = bold_font
@@ -885,6 +944,21 @@ async def quick_estimate_export(req: QuickEstimateRequest, request: Request, db:
         ("Contingency (7.5%)", "Unforeseen conditions, change orders",
          "AACE International Recommended Practice 18R-97 — Class 3 estimate contingency range"),
     ]
+
+    # Add land-related sources if land cost was provided
+    if req.land_cost > 0:
+        sources += [
+            ("Land Purchase Price", "User-entered value",
+             "User input — verify with purchase agreement or broker opinion of value"),
+            ("Title & Closing (~1.5%)", "Title insurance, recording fees, escrow, legal review",
+             "ALTA best practices — typical range 1-2% of land value"),
+            ("Phase I ESA (~$4,000)", "Environmental site assessment per ASTM E1527-21",
+             "ASTM E1527-21 — https://www.astm.org/e1527-21.html — typical range $3,000-$5,000"),
+            ("ALTA Survey (~$7,500)", "Boundary and topographic survey",
+             "NSPS/ALTA Standards — https://www.nsps.us.com — typical range $5,000-$10,000"),
+            ("Utility Tap Fees (~$15,000)", "Water, sewer, electric connection fees",
+             "Municipal fee schedules — varies widely by jurisdiction ($8,000-$25,000 typical)"),
+        ]
 
     for i, (cat, assumption, source) in enumerate(sources, start=4):
         ws2.cell(row=i, column=1, value=cat)
@@ -1031,7 +1105,16 @@ Search for CURRENT construction costs specific to {btype_label} in {req.city} or
 Find real $/SF data for this property type, not generic national averages.
 Include itemized soft costs: A&E 5%, Permits & Impact Fees 2.5%, Geotech/Environmental 0.8%, Survey & Land Planning 0.4%, Legal & Closing 0.8%, Builder's Risk Insurance 0.7%, Property Taxes During Construction 0.8%, Contingency 7.5%.
 For Construction Loan Interest, use: hard costs × {req.loan_rate}% annual rate × {req.const_months} months / 12 × 0.5 average draw factor.
-Write the Excel file per the system prompt format.
+{"" if req.land_cost <= 0 else f'''
+After the soft costs section, add a "Land & Acquisition Costs" section with:
+- Land Purchase Price: ${req.land_cost:,.0f} (user entered)
+- Title & Closing Costs: ~1.5% of land = ${req.land_cost * 0.015:,.0f}
+- Phase I ESA: $4,000 (lump sum)
+- ALTA Survey: $7,500 (lump sum)
+- Utility Tap / Impact Fees: $15,000 (lump sum)
+- Land & Acquisition Subtotal
+Include these in the TOTAL ESTIMATED COST (hard + soft + land).
+'''}Write the Excel file per the system prompt format.
 """
         try:
             async for message in query(
