@@ -65,38 +65,136 @@ pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 # ── Cost Data (same as desktop app) ──────────────────────────────────────────
-DRIVEUP_COSTS = [
-    ("Site Work & Grading",        5.50),
-    ("Concrete Slab / Foundation", 8.00),
-    ("Steel Structure",           18.00),
-    ("Metal Roofing",              5.50),
-    ("Electrical & Lighting",      4.00),
-    ("Paving & Parking",           4.50),
-]
-DRIVEUP_LUMP = [
-    ("Roll-Up Doors",    "~1 per 125 SF", lambda sf: int(sf / 125) * 1100),
-    ("Security System",  "Lump sum",      lambda sf: 30000),
-    ("Office Buildout",  "~400 SF",       lambda sf: 400 * 130),
-]
+# ── Property Type Cost Data ──────────────────────────────────────────────────
+# Per-SF costs and lump-sum items for each property type.
+# Sources: RSMeans 2024/2025 national averages, adjusted by location factor.
 
-CC_COSTS = [
-    ("Site Work & Grading",        5.50),
-    ("Concrete Slab / Foundation", 9.50),
-    ("Steel Structure",           22.00),
-    ("Metal Roofing",              5.50),
-    ("HVAC System",               12.00),
-    ("Insulation",                 4.00),
-    ("Interior Corridors",         6.00),
-    ("Fire Suppression",           3.50),
-    ("Electrical & Lighting",      5.00),
-    ("Paving & Parking",           4.50),
-]
-CC_LUMP = [
-    ("Roll-Up / Entry Doors", "~1 per 100 SF", lambda sf: int(sf / 100) * 1200),
-    ("Elevator",              "If > 20k SF",    lambda sf: 120000 if sf > 20000 else 0),
-    ("Security System",       "Lump sum",       lambda sf: 40000),
-    ("Office Buildout",       "~400 SF",        lambda sf: 400 * 140),
-]
+PROPERTY_TYPES = {
+    "storage_driveup": {
+        "label": "Self-Storage: Drive-Up",
+        "has_stories": False,
+        "per_sf": [
+            ("Site Work & Grading",        5.50),
+            ("Concrete Slab / Foundation", 8.00),
+            ("Steel Structure",           18.00),
+            ("Metal Roofing",              5.50),
+            ("Electrical & Lighting",      4.00),
+            ("Paving & Parking",           4.50),
+        ],
+        "lump": [
+            ("Roll-Up Doors",    "~1 per 125 SF", lambda sf: int(sf / 125) * 1100),
+            ("Security System",  "Lump sum",      lambda sf: 30000),
+            ("Office Buildout",  "~400 SF",       lambda sf: 400 * 130),
+        ],
+    },
+    "storage_cc": {
+        "label": "Self-Storage: Climate Controlled",
+        "has_stories": True,
+        "per_sf": [
+            ("Site Work & Grading",        5.50),
+            ("Concrete Slab / Foundation", 9.50),
+            ("Steel Structure",           22.00),
+            ("Metal Roofing",              5.50),
+            ("HVAC System",               12.00),
+            ("Insulation",                 4.00),
+            ("Interior Corridors",         6.00),
+            ("Fire Suppression",           3.50),
+            ("Electrical & Lighting",      5.00),
+            ("Paving & Parking",           4.50),
+        ],
+        "lump": [
+            ("Roll-Up / Entry Doors", "~1 per 100 SF", lambda sf: int(sf / 100) * 1200),
+            ("Elevator",              "If > 20k SF",    lambda sf: 120000 if sf > 20000 else 0),
+            ("Security System",       "Lump sum",       lambda sf: 40000),
+            ("Office Buildout",       "~400 SF",        lambda sf: 400 * 140),
+        ],
+    },
+    "retail_qsr": {
+        "label": "Retail / QSR (Shell)",
+        "has_stories": False,
+        "per_sf": [
+            ("Site Work & Grading",          8.00),
+            ("Foundation",                  12.00),
+            ("Structural Framing",          18.00),
+            ("Exterior Walls & Façade",     22.00),
+            ("Roofing",                      8.00),
+            ("Storefront / Windows",        10.00),
+            ("Electrical & Lighting",        8.00),
+            ("Plumbing (Rough)",             6.00),
+            ("HVAC (Shell Prep)",            5.00),
+            ("Paving & Parking",             6.00),
+        ],
+        "lump": [
+            ("Drive-Thru Infrastructure", "If applicable", lambda sf: 45000 if sf < 4000 else 0),
+            ("Grease Trap / Hood Prep",   "QSR standard",  lambda sf: 25000),
+            ("Signage Allowance",         "Lump sum",      lambda sf: 15000),
+            ("ADA / Restrooms",           "Lump sum",      lambda sf: 20000),
+        ],
+    },
+    "warehouse": {
+        "label": "Warehouse / Distribution",
+        "has_stories": False,
+        "per_sf": [
+            ("Site Work & Grading",          4.00),
+            ("Concrete Slab / Foundation",  7.50),
+            ("Steel Structure (Clear Span)", 16.00),
+            ("Metal Roofing & Walls",        6.50),
+            ("Dock Doors & Levelers",        3.00),
+            ("Electrical & Lighting",        4.50),
+            ("Fire Suppression (ESFR)",      3.50),
+            ("Paving & Truck Courts",        5.00),
+        ],
+        "lump": [
+            ("Office Buildout",   "~1,000 SF",   lambda sf: 1000 * 130),
+            ("Security / Fencing", "Lump sum",   lambda sf: 35000),
+        ],
+    },
+    "medical_office": {
+        "label": "Medical Office",
+        "has_stories": True,
+        "per_sf": [
+            ("Site Work & Grading",          6.00),
+            ("Foundation",                  12.00),
+            ("Structural Framing",          24.00),
+            ("Exterior Walls & Façade",     18.00),
+            ("Roofing",                      7.00),
+            ("Interior Build-Out",          35.00),
+            ("HVAC (Medical Grade)",        18.00),
+            ("Plumbing (Medical)",          12.00),
+            ("Electrical & Lighting",       12.00),
+            ("Fire Suppression",             4.00),
+            ("Paving & Parking",             5.00),
+        ],
+        "lump": [
+            ("Elevator",           "If multi-story", lambda sf: 150000 if sf > 10000 else 0),
+            ("Medical Gas Systems", "Lump sum",      lambda sf: 40000),
+            ("ADA Compliance",     "Lump sum",       lambda sf: 25000),
+        ],
+    },
+    "multifamily": {
+        "label": "Multifamily — Garden Style",
+        "has_stories": True,
+        "per_sf": [
+            ("Site Work & Grading",          5.50),
+            ("Foundation",                  10.00),
+            ("Wood / Steel Framing",        22.00),
+            ("Exterior Walls & Siding",     14.00),
+            ("Roofing",                      6.00),
+            ("Windows & Doors",              8.00),
+            ("Interior Finishes",           28.00),
+            ("HVAC (Per Unit)",             10.00),
+            ("Plumbing (Per Unit)",         12.00),
+            ("Electrical & Lighting",        8.00),
+            ("Fire Suppression",             3.50),
+            ("Paving & Parking",             4.00),
+        ],
+        "lump": [
+            ("Elevator",           "If 3+ stories", lambda sf: 160000 if sf > 30000 else 0),
+            ("Clubhouse / Amenity", "Lump sum",     lambda sf: 80000),
+            ("Landscaping",        "Lump sum",       lambda sf: 50000),
+        ],
+    },
+}
 
 QUALITY_MULT = {"Economy": 0.85, "Average": 1.00, "Premium": 1.15}
 
@@ -541,8 +639,12 @@ async def quick_estimate(req: QuickEstimateRequest, request: Request, db: Sessio
 
     loc_factor, matched_city = _lookup_location_factor(req.city)
 
-    per_sf_items = CC_COSTS if btype == "cc" else DRIVEUP_COSTS
-    lump_items = CC_LUMP if btype == "cc" else DRIVEUP_LUMP
+    ptype = PROPERTY_TYPES.get(btype)
+    if not ptype:
+        raise HTTPException(400, f"Unknown property type: {btype}")
+
+    per_sf_items = ptype["per_sf"]
+    lump_items = ptype["lump"]
 
     rows = []
     total_hard = 0.0
@@ -574,7 +676,7 @@ async def quick_estimate(req: QuickEstimateRequest, request: Request, db: Sessio
         _log_usage(user.id, "quick_estimate", req.city or "N/A", db)
 
     return {
-        "building_type": "Climate Controlled" if btype == "cc" else "Drive-Up",
+        "building_type": ptype["label"],
         "sf": sf,
         "city": req.city or "National Avg",
         "quality": quality,
@@ -678,37 +780,36 @@ async def run_accurate_estimate(req: AccurateEstimateRequest, request: Request, 
 
     today = date.today().strftime("%b-%d-%y")
     safe_city = req.city.replace(" ", "_").replace(",", "")
-    btype_label = "Climate Controlled" if req.building_type == "cc" else "Drive-Up"
+    ptype = PROPERTY_TYPES.get(req.building_type)
+    btype_label = ptype["label"] if ptype else req.building_type
     output_file = os.path.join(OUTPUT_DIR, f"cost_estimate_{safe_city}_{today}.xlsx")
 
     async def event_stream():
         # Set server API key for this request
         os.environ["ANTHROPIC_API_KEY"] = api_key
 
-        stories = max(1, min(req.stories, 5)) if req.building_type == "cc" else 1
+        has_stories = ptype["has_stories"] if ptype else False
+        stories = max(1, min(req.stories, 5)) if has_stories else 1
         stories_line = f"\n  Stories       : {stories}" if stories > 1 else ""
         stories_instruction = ""
         if stories > 1:
             stories_instruction = f"""
-This is a {stories}-story building. Account for multi-story construction impacts:
-- Heavier structural steel (+~15% per additional story above 1)
-- Stronger foundation (+~20% per additional story above 1)
-- More complex fire suppression and electrical risers
-- Stairwells (2 required by code, ~$35k each)
-- Additional elevator if 3+ stories and >40k SF
+This is a {stories}-story building. Research actual multi-story construction cost
+impacts for this property type and city. Account for structural, mechanical,
+vertical transportation, and code compliance differences vs single-story.
 """
 
         prompt = f"""
 Research and create a construction cost estimate for:
-  Building Type : {btype_label} self-storage
+  Property Type : {btype_label}
   Total SF      : {req.sf:,.0f}{stories_line}
   City          : {req.city}
   Quality       : {req.quality}
   Date          : {date.today().strftime("%B %d, %Y")}
   Save to       : {output_file}
 {stories_instruction}
-Search for CURRENT construction costs specific to {req.city} or the nearest major metro.
-Find real $/SF data, not generic national averages.
+Search for CURRENT construction costs specific to {btype_label} in {req.city} or the nearest major metro.
+Find real $/SF data for this property type, not generic national averages.
 Include itemized soft costs (~22.5% of hard costs total): A&E 5%, Permits & Impact Fees 2.5%, Geotech/Environmental 0.8%, Survey & Land Planning 0.4%, Legal & Closing 0.8%, Builder's Risk Insurance 0.7%, Construction Loan Interest 4%, Property Taxes During Construction 0.8%, Contingency 7.5%.
 Write the Excel file per the system prompt format.
 """

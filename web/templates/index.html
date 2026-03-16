@@ -213,14 +213,24 @@
         <!-- ═══════════ COST ESTIMATOR TAB ═══════════ -->
         <div class="tab-content" id="tab-cost">
             <div class="card">
-                <!-- Building type toggle -->
-                <label style="font-size:12px; color:#64748b; margin-bottom:8px; display:block;">Building Type</label>
-                <div class="toggle-group" style="margin-bottom:18px;">
-                    <button class="toggle-btn active" id="togDriveup" onclick="setBuildingType('driveup')">Drive-Up</button>
-                    <button class="toggle-btn" id="togCC" onclick="setBuildingType('cc')">Climate Controlled</button>
-                </div>
-
                 <div class="form-row">
+                    <div class="form-group">
+                        <label>Property Type</label>
+                        <select id="costPropertyType" style="width:240px;" onchange="onPropertyTypeChange()">
+                            <optgroup label="Self-Storage">
+                                <option value="storage_driveup" selected>Drive-Up</option>
+                                <option value="storage_cc">Climate Controlled</option>
+                            </optgroup>
+                            <optgroup label="Commercial">
+                                <option value="retail_qsr">Retail / QSR (Shell)</option>
+                                <option value="warehouse">Warehouse / Distribution</option>
+                                <option value="medical_office">Medical Office</option>
+                            </optgroup>
+                            <optgroup label="Residential">
+                                <option value="multifamily">Multifamily — Garden Style</option>
+                            </optgroup>
+                        </select>
+                    </div>
                     <div class="form-group">
                         <label>Total Building SF</label>
                         <input type="text" id="costSF" value="50,000" style="width:140px;">
@@ -321,14 +331,13 @@
             else btns[1].classList.add('active');
         }
 
-        // ── Building type toggle ──
-        let buildingType = 'driveup';
-        function setBuildingType(t) {
-            buildingType = t;
-            document.getElementById('togDriveup').classList.toggle('active', t === 'driveup');
-            document.getElementById('togCC').classList.toggle('active', t === 'cc');
-            document.getElementById('storiesGroup').style.display = t === 'cc' ? '' : 'none';
-            if (t === 'driveup') document.getElementById('costStories').value = '1';
+        // ── Property type selector ──
+        const STORY_TYPES = ['storage_cc', 'medical_office', 'multifamily'];
+        function onPropertyTypeChange() {
+            const ptype = document.getElementById('costPropertyType').value;
+            const hasStories = STORY_TYPES.includes(ptype);
+            document.getElementById('storiesGroup').style.display = hasStories ? '' : 'none';
+            if (!hasStories) document.getElementById('costStories').value = '1';
         }
 
         // ── Status ──
@@ -343,6 +352,7 @@
             const sf = parseFloat(document.getElementById('costSF').value.replace(/,/g, ''));
             const city = document.getElementById('costCity').value.trim();
             const quality = document.getElementById('costQuality').value;
+            const propertyType = document.getElementById('costPropertyType').value;
 
             if (!sf || sf <= 0) { alert('Please enter a valid SF'); return; }
 
@@ -351,7 +361,7 @@
                     method: 'POST',
                     headers: authHeaders(),
                     body: JSON.stringify({
-                        building_type: buildingType,
+                        building_type: propertyType,
                         sf: sf,
                         city: city,
                         quality: quality,
@@ -493,6 +503,7 @@
             const city = document.getElementById('costCity').value.trim();
             const quality = document.getElementById('costQuality').value;
             const stories = parseInt(document.getElementById('costStories').value) || 1;
+            const propertyType = document.getElementById('costPropertyType').value;
 
             if (!sf || sf <= 0) { alert('Please enter a valid SF'); return; }
             if (!city) { alert('Please enter a city for the accurate estimate'); return; }
@@ -511,7 +522,7 @@
                     method: 'POST',
                     headers: authHeaders(),
                     body: JSON.stringify({
-                        building_type: buildingType,
+                        building_type: propertyType,
                         sf: sf,
                         city: city,
                         quality: quality,
