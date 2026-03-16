@@ -428,10 +428,12 @@ class LoginRequest(BaseModel):
     password: str
 
 class QuickEstimateRequest(BaseModel):
-    building_type: str  # "driveup" or "cc"
+    building_type: str
     sf: float
     city: str = ""
     quality: str = "Average"
+    loan_rate: float = 8.5      # annual interest rate %
+    const_months: int = 12      # construction period in months
 
 class CompsRequest(BaseModel):
     location: str
@@ -443,6 +445,8 @@ class AccurateEstimateRequest(BaseModel):
     city: str
     quality: str = "Average"
     stories: int = 1
+    loan_rate: float = 8.5
+    const_months: int = 12
 
 
 # ── Pages ────────────────────────────────────────────────────────────────────
@@ -661,12 +665,28 @@ async def quick_estimate(req: QuickEstimateRequest, request: Request, db: Sessio
             rows.append({"name": name, "psf": note, "cost": f"${cost:,.0f}", "cost_raw": cost})
             total_hard += cost
 
+    # Calculate construction loan interest from user inputs
+    loan_rate = max(0, min(req.loan_rate, 25))  # cap at 25%
+    const_months = max(1, min(req.const_months, 48))  # cap at 48 months
+    # Average outstanding balance is ~50% of total (draws happen over time)
+    loan_interest = total_hard * (loan_rate / 100) * (const_months / 12) * 0.5
+
     soft_items = []
     total_soft = 0.0
     for name, pct in SOFT_COSTS:
-        amt = total_hard * pct
-        soft_items.append({"name": name, "pct": f"{pct:.1%}", "cost": f"${amt:,.0f}", "cost_raw": amt})
-        total_soft += amt
+        if name == "Construction Loan Interest":
+            # Use calculated value instead of flat percentage
+            soft_items.append({
+                "name": f"Construction Loan Interest ({loan_rate:.1f}% × {const_months}mo)",
+                "pct": f"{loan_interest / total_hard:.1%}" if total_hard > 0 else "0.0%",
+                "cost": f"${loan_interest:,.0f}",
+                "cost_raw": loan_interest,
+            })
+            total_soft += loan_interest
+        else:
+            amt = total_hard * pct
+            soft_items.append({"name": name, "pct": f"{pct:.1%}", "cost": f"${amt:,.0f}", "cost_raw": amt})
+            total_soft += amt
 
     grand_total = total_hard + total_soft
     total_psf = grand_total / sf if sf > 0 else 0
@@ -810,7 +830,8 @@ Research and create a construction cost estimate for:
 {stories_instruction}
 Search for CURRENT construction costs specific to {btype_label} in {req.city} or the nearest major metro.
 Find real $/SF data for this property type, not generic national averages.
-Include itemized soft costs (~22.5% of hard costs total): A&E 5%, Permits & Impact Fees 2.5%, Geotech/Environmental 0.8%, Survey & Land Planning 0.4%, Legal & Closing 0.8%, Builder's Risk Insurance 0.7%, Construction Loan Interest 4%, Property Taxes During Construction 0.8%, Contingency 7.5%.
+Include itemized soft costs: A&E 5%, Permits & Impact Fees 2.5%, Geotech/Environmental 0.8%, Survey & Land Planning 0.4%, Legal & Closing 0.8%, Builder's Risk Insurance 0.7%, Property Taxes During Construction 0.8%, Contingency 7.5%.
+For Construction Loan Interest, use: hard costs × {req.loan_rate}% annual rate × {req.const_months} months / 12 × 0.5 average draw factor.
 Write the Excel file per the system prompt format.
 """
         try:
