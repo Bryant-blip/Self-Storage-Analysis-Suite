@@ -66,6 +66,14 @@ This is built to the standard of a tool used by a New York private equity firm's
 ### CLI Agent (`storage_comps_agent.py`)
 - Standalone CLI script for running market comps via terminal
 
+### Fact-Check Agent (`fact_check_agent.py`)
+- Aggressive, skeptical price auditor for comps Excel files
+- Reads all data from every tab, verifies each facility's prices against live websites/aggregators, and recalculates all Market Summary math
+- Outputs a 4-tab Excel audit report: Price Verification (row-by-row status), Math Verification (recalculated Avg/Min/Max/Count), Analysis Notes (harsh written critique with sections: Price Accuracy Assessment, Suspicious Pricing, Math Errors, Data Gaps, Bottom Line), Summary (accuracy stats and X/10 score)
+- Exact dollar match required for "Verified" ($129.00 = $129); any difference is "Mismatch" with +$X/-$X shown
+- Searches once per facility, matches all unit types from that lookup; uses Sonnet with max_turns=50
+- Integrated into both desktop app (orange "Fact-Check" button after comps complete) and web app (`POST /api/fact-check` SSE stream)
+
 ## Cost Data
 
 ### Hard Costs (per SF)
@@ -107,6 +115,7 @@ USACE Area Cost Factors applied to base costs per city (e.g., NYC 1.35, Austin 0
 | GET | `/api/usage` | User's usage stats |
 | POST | `/api/quick-estimate` | Instant cost estimate (no API) |
 | POST | `/api/comps` | Market comps agent (SSE stream) |
+| POST | `/api/fact-check` | Fact-check audit agent (SSE stream) |
 | POST | `/api/accurate-estimate` | Accurate cost agent (SSE stream) |
 | GET | `/api/download/{file}` | Download Excel file (token auth via query param) |
 | GET | `/api/admin/users` | Admin: list all users and usage |
@@ -128,6 +137,7 @@ Real Estate Project/
 ├── CLAUDE.md                       # This file
 ├── storage_comps_app.py            # Desktop app (tkinter, ~1300 lines)
 ├── storage_comps_agent.py          # CLI agent script
+├── fact_check_agent.py             # Fact-check & audit CLI agent
 ├── build_comps.py                  # Build helper
 ├── requirements.txt                # Desktop dependencies
 ├── Launch Storage Comps App.bat    # Desktop shortcut

@@ -207,6 +207,18 @@
                 <button class="btn btn-success" id="compsDownloadBtn" onclick="downloadComps()">
                     Download Excel &#9654;
                 </button>
+                <button class="btn btn-orange" id="compsFactCheckBtn" onclick="runFactCheck()">
+                    &#10004; Fact-Check
+                </button>
+            </div>
+
+            <!-- Fact-check log (hidden until running) -->
+            <div id="factCheckLogWrap" style="display:none; margin-top:16px;">
+                <span style="font-size:13px; font-weight:600; color:#64748b;">Fact-Check Audit Log</span>
+                <div class="log-area" id="factCheckLog" style="margin-top:8px;"></div>
+                <div style="margin-top:12px; text-align:right; display:none;" id="factCheckDownloadWrap">
+                    <button class="btn btn-success" onclick="downloadFactCheck()">Download Audit Report &#9654;</button>
+                </div>
             </div>
         </div>
 
@@ -565,6 +577,80 @@
         function downloadComps() {
             if (!compsFile) return;
             window.open(`/api/download/${encodeURIComponent(compsFile)}?token=${token}`, '_blank');
+        }
+
+        // ── Fact-Check ──
+        let factCheckFile = null;
+
+        async function runFactCheck() {
+            if (!compsFile) { alert('Run a comps analysis first'); return; }
+
+            const logEl = document.getElementById('factCheckLog');
+            logEl.textContent = '';
+            document.getElementById('factCheckLogWrap').style.display = 'block';
+            document.getElementById('factCheckDownloadWrap').style.display = 'none';
+            factCheckFile = null;
+
+            document.getElementById('compsFactCheckBtn').disabled = true;
+            document.getElementById('compsRunBtn').disabled = true;
+            setStatus('Auditing comps report...', '#f59e0b');
+
+            try {
+                const res = await fetch('/api/fact-check', {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: JSON.stringify({ filename: compsFile }),
+                });
+
+                if (res.status === 401) { window.location.href = '/login'; return; }
+                if (!res.ok) { const d = await res.json(); alert(d.detail); return; }
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        const msg = JSON.parse(line.slice(6));
+
+                        if (msg.type === 'log') {
+                            logEl.textContent += msg.text + '\n';
+                            logEl.scrollTop = logEl.scrollHeight;
+                        } else if (msg.type === 'done') {
+                            factCheckFile = msg.file;
+                            if (factCheckFile) {
+                                document.getElementById('factCheckDownloadWrap').style.display = 'block';
+                                setStatus(`Audit complete! File: ${factCheckFile}`, '#34d399');
+                            } else {
+                                setStatus('Audit finished (no file produced)', '#64748b');
+                            }
+                            logEl.textContent += '\n=== AUDIT COMPLETE ===\n';
+                        } else if (msg.type === 'error') {
+                            logEl.textContent += '\nERROR: ' + msg.text + '\n';
+                            setStatus('Error: ' + msg.text, '#f43f5e');
+                        }
+                    }
+                }
+            } catch (err) {
+                logEl.textContent += '\nConnection error: ' + err.message + '\n';
+                setStatus('Error: ' + err.message, '#f43f5e');
+            }
+
+            document.getElementById('compsFactCheckBtn').disabled = false;
+            document.getElementById('compsRunBtn').disabled = false;
+        }
+
+        function downloadFactCheck() {
+            if (!factCheckFile) return;
+            window.open(`/api/download/${encodeURIComponent(factCheckFile)}?token=${token}`, '_blank');
         }
 
         // ── Accurate Estimate ──
