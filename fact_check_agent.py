@@ -235,7 +235,7 @@ Follow the steps in the system prompt:
             permission_mode="acceptEdits",
             cwd=BASE_DIR,
             max_turns=50,
-            model="claude-sonnet-4-5-20250514",
+            model="claude-sonnet-4-6",
         ),
     ):
         if isinstance(message, AssistantMessage):
