@@ -244,24 +244,50 @@ def _lookup_location_factor(city_text: str) -> tuple[float, str]:
 
 # ── System Prompts ───────────────────────────────────────────────────────────
 COMPS_SYSTEM_PROMPT = """
-You are a self-storage market research analyst. Output a formatted Excel file.
-MINIMIZE web fetches — every extra fetch costs money.
+You are a self-storage market research analyst. Your job is to find EVERY
+self-storage facility within the search radius and collect ACTUAL PRICING
+for as many unit types as possible. Output a formatted Excel file.
 
-## Research Strategy (strictly in order)
+## Research Strategy
 
-1. ONE WebSearch: "self storage [location] prices site:sparefoot.com"
-2. Fetch the top SpareFoot result — extract EVERY facility listed on that page.
-3. If SpareFoot has fewer than 5 facilities, do ONE more WebSearch:
-   "self storage near [location] pricing" and fetch the top 2 results.
-4. Only visit individual facility websites if a facility has no pricing data
-   from the above sources. Limit to 3 individual sites maximum.
+### Phase 1 — Find all facilities
+1. WebSearch: "self storage units near [location]"
+2. WebSearch: "self storage [city] [state] prices"
+3. From these results, build a list of every facility within the radius.
 
-Find every facility within the search radius — do not skip any.
-Total fetches allowed: 6 maximum.
+### Phase 2 — Collect pricing for each facility
+Work through facilities ONE AT A TIME. For each facility:
+1. WebSearch: "[facility name] [city] self storage unit prices"
+2. **Check search snippets first** — prices often appear directly in result text.
+3. **Fetch priority order** (try until you get pricing):
+   a. StorageUnits.com or SelfStorage.com result (static HTML, most reliable)
+   b. StorageCafe.com result
+   c. The facility's own website (WARNING: many use JavaScript and return empty
+      content — if fetch returns no pricing, move on immediately)
+   d. SpareFoot result (often blocked — try last)
+4. If the first fetch has no pricing, try up to 2 MORE pages from search results.
+5. If all fetches fail, try ONE fallback search:
+   "site:storageunits.com [facility name] [city]"
+6. Extract ALL unit types and rates from whichever source works.
+
+### Common issues:
+- **JavaScript sites:** Major chains (Public Storage, Extra Space, CubeSmart,
+  Life Storage) render prices via JS. Their direct websites return empty pricing.
+  ALWAYS use aggregator sites for these chains.
+- **Empty/blocked pages:** If WebFetch returns a CAPTCHA, "Access Denied," or
+  very little text, do NOT retry that domain. Move to the next source.
+- **Rate formats:** Prices appear as "$89", "$89.00", "$89/mo", "From $89".
+  Extract the dollar amount.
+
+## Target Unit Types
+Collect pricing for ALL of these sizes when available:
+5x5, 5x10, 10x10, 10x15, 10x20, 10x25, 10x30, Parking/Vehicle Storage
+
+Do NOT limit to just 10x10 and 10x20. Include every unit size the facility offers.
 
 ## Collect per facility:
 Name | Address | Phone | Website | Online rates by unit size | In-store rates |
-Climate controlled (Yes/No) | Promotions | Distance (mi) & drive time (min)
+Climate controlled (Yes/No/Drive-Up) | Promotions | Distance (mi) & drive time (min)
 from subject using Haversine formula, 25 mph estimate.
 
 Include only facilities within the search radius. Sort closest first.
@@ -289,6 +315,7 @@ Format: bold header (#FCE4D6), sorted by distance
 - Never fabricate pricing. Mark missing data as N/A.
 - Distance required on every row — exclude facility if unknown.
 - Write Excel via openpyxl using the Bash tool.
+- A facility with ALL N/A prices is useless — try harder to find at least one price.
 """
 
 COST_AGENT_PROMPT = """
@@ -1204,8 +1231,8 @@ No fabricated data — mark missing as N/A.
                     allowed_tools=["WebSearch", "WebFetch", "Bash", "Write"],
                     permission_mode="acceptEdits",
                     cwd=BASE_DIR,
-                    max_turns=25,
-                    model="claude-haiku-4-5",
+                    max_turns=75,
+                    model="claude-sonnet-4-6",
                 ),
             ):
                 if isinstance(message, AssistantMessage):
