@@ -1233,8 +1233,8 @@ No fabricated data — mark missing as N/A.
                     allowed_tools=["WebSearch", "WebFetch", "Bash", "Write"],
                     permission_mode="acceptEdits",
                     cwd=BASE_DIR,
-                    max_turns=75,
-                    model="claude-sonnet-4-6",
+                    max_turns=50,
+                    model="claude-haiku-4-5-20251001",
                 ),
             ):
                 if isinstance(message, AssistantMessage):
