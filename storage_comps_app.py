@@ -1457,11 +1457,13 @@ Find self-storage market rent comps for:
   Save to  : {self._output_file}
 
 Instructions:
-1. Search SpareFoot for ALL self-storage facilities within {radius} miles of {location}.
-2. Find every facility in the radius \u2014 do not stop early.
-3. Calculate distance/drive time from "{location}" for each facility.
-4. Write the Excel file using openpyxl (3-tab format per system prompt).
-5. Print a brief summary: facilities found, 10x10 price range, 10x20 price range.
+1. Find ALL self-storage facilities within {radius} miles of {location}.
+2. For each facility, search for pricing (use aggregator sites like StorageUnits.com
+   and SelfStorage.com \u2014 they return static HTML with actual prices).
+3. Collect ALL unit sizes (5x5, 5x10, 10x10, 10x15, 10x20, 10x25, 10x30).
+4. Calculate distance/drive time from "{location}" for each facility.
+5. Write the Excel file using openpyxl (3-tab format per system prompt).
+6. Print a brief summary: facilities found, price ranges by unit size.
 
 No fabricated data \u2014 mark missing as N/A.
 """
