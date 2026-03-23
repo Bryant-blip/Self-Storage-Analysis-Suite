@@ -14,3 +14,4 @@ anyio
 geopy
 python-dotenv
 playwright
+firecrawl-py

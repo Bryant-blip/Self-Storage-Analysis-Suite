@@ -61,30 +61,28 @@ still have missing prices. Track which facilities have prices and which don't.
 After Tiers 1-2, write the Excel file with whatever data you have.
 Leave cells blank for missing prices. This ensures a file always exists.
 
-### Tier 3 — Individual WebFetch (1 fetch per facility with missing prices)
+### Tier 3 — Firecrawl (renders JS, returns clean Markdown)
 For each facility STILL missing prices:
 1. WebSearch: "[facility name] [city] self storage unit prices"
 2. Check snippets first — if prices are in the snippet, skip the fetch.
-3. WebFetch ONE of these (in order of reliability):
-   a. StorageUnits.com or SelfStorage.com individual listing
-   b. StorageCafe.com listing
-   c. Facility's own website (works for sites with static HTML)
-4. After each facility lookup, REWRITE the Excel file with updated data.
+3. Try WebFetch first on aggregator listings (StorageUnits.com, SelfStorage.com,
+   StorageCafe.com) — these are static HTML and don't need Firecrawl.
+4. For the facility's OWN website, use Firecrawl via Bash:
 
-### Tier 4 — Playwright scraper (LAST RESORT — slowest)
-Only for facilities that STILL have no prices after Tiers 1-3.
-Use the Playwright scraper via Bash to render JavaScript:
+    python firecrawl_scrape.py "<facility-website-url>"
+
+   This renders JavaScript server-side and returns clean Markdown with pricing.
+   Much better than raw HTML for extracting structured price data.
+5. After each facility lookup, REWRITE the Excel file with updated data.
+
+### Tier 4 — Playwright scraper (LAST RESORT — if Firecrawl fails)
+Only if Firecrawl returns an error or empty content:
 
     python scrape_prices.py "<facility-website-url>"
 
-This launches a headless browser and prints the visible page text.
-Use it ONLY for:
-- Facility websites where WebFetch returned empty/no pricing (JS-rendered)
-- Major chains (Public Storage, Extra Space, CubeSmart, Life Storage)
-Do NOT use it for:
-- Aggregator sites — WebFetch already works for those
-- Pages that returned CAPTCHA or "Access Denied" — scraper won't help either
-After each Playwright lookup, REWRITE the Excel file with updated data.
+This launches a local headless browser and prints visible page text.
+Use as a final fallback — it's slower and output is less structured.
+After each lookup, REWRITE the Excel file with updated data.
 
 ### Key rules:
 - **Never skip Tier 1.** Snippets are free and often have prices.
@@ -146,6 +144,46 @@ Tab 2 "Facility List" — one row per facility
 Columns: Facility Name | Address | Distance (mi) | Drive Time (min) | Phone | Website
 Format: bold header (#FCE4D6), sorted by distance
 
+## Market Analysis — Population & Existing Supply
+
+After completing the comps tabs, gather market-level data:
+
+### Population (1-mile, 3-mile, 5-mile radius)
+1. WebSearch: "population within 1 3 5 mile radius of [location]"
+2. Also try: "[zip code] demographics population radius" or "[city] [state] population density"
+3. Look for Census data, demographic reports, or tools like Census Reporter.
+4. Record the population for each ring: 1-mile, 3-mile, and 5-mile.
+5. If you cannot find exact radius data, search for zip code population as a fallback.
+
+### Existing Supply (competitor square footage)
+For each facility found in the comps search:
+1. Search for published total square footage or net rentable SF.
+   Try: "[facility name] [city] total square feet" or "[facility name] net rentable"
+2. Check REIT investor pages (Extra Space, Public Storage, CubeSmart, Life Storage)
+   — they often list per-facility SF.
+3. Check county tax assessor / property records for the facility address.
+4. Check aggregator sites (SelfStorage.com, StorageCafe.com) which sometimes list facility size.
+5. **Do NOT estimate.** Only report confirmed, published square footage.
+6. Record the SOURCE where you found the SF (e.g., "Public Storage investor page",
+   "Travis County tax records", "StorageCafe.com").
+7. Leave blank if no published SF can be found.
+
+### Tab 3 "Market Analysis"
+Section 1: "POPULATION" header (bold, blue #D6E4F0)
+  Row: "1-Mile Radius" | [population] | [source]
+  Row: "3-Mile Radius" | [population] | [source]
+  Row: "5-Mile Radius" | [population] | [source]
+
+Blank row separator.
+
+Section 2: "EXISTING SUPPLY" header (bold, blue #D6E4F0)
+  Columns: Facility Name | Address | Distance (mi) | Total SF | Source
+  One row per facility (sorted by distance, same order as comps).
+  Leave Total SF blank if not found — do NOT estimate.
+
+  Final row: "TOTAL" | | | [sum of known SF] |
+  (Only sum facilities where SF was confirmed.)
+
 ## Rules
 - Never fabricate pricing. Leave the cell BLANK if no data — do NOT write "N/A".
 - Distance required — exclude facility if unknown.
@@ -172,7 +210,7 @@ Instructions:
    and SelfStorage.com — they return static HTML with actual prices).
 3. Collect ALL unit sizes (5x5, 5x10, 10x10, 10x15, 10x20, 10x25, 10x30).
 4. Calculate distance/drive time from "{location}" for each facility.
-5. Write the Excel file using openpyxl (2-tab format per system prompt).
+5. Write the Excel file using openpyxl (3-tab format per system prompt).
 6. Print a brief summary: facilities found, price ranges by unit size.
 
 No fabricated data — leave cells blank if no price found.

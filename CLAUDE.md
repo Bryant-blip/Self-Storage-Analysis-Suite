@@ -25,7 +25,7 @@ This platform handles user credentials and third-party API keys. Every decision 
 ### Functionality — Accuracy Over Speed
 The tools exist to support real investment decisions. Output must be reliable enough to present in a deal memo.
 
-- **No fabricated data.** Market comps only include pricing sourced from the web. If a rate can't be found, mark it "N/A" — never guess.
+- **No fabricated data.** Market comps only include pricing sourced from the web. If a rate can't be found, leave the cell blank — never guess.
 - **Distance is mandatory.** Every facility must have a verified distance from the subject property. No facility is included without it.
 - **Itemized cost breakdowns.** The cost estimator provides line-by-line hard costs and 9 itemized soft cost categories (~22.5%) — not a single opaque percentage. Every dollar is traceable.
 - **Location-adjusted.** Construction costs are adjusted using USACE Area Cost Factors specific to each metro, not national averages.
@@ -35,7 +35,7 @@ The tools exist to support real investment decisions. Output must be reliable en
 This is built to the standard of a tool used by a New York private equity firm's acquisitions team.
 
 - **Clean, consistent UI.** Dark theme with precise spacing, no clutter. Every element earns its place on screen.
-- **Structured output.** Excel reports include formatted headers, auto-sized columns, conditional formatting, and multiple tabs (Comps Detail, Market Summary, Facility List). Ready for deal books and IC presentations.
+- **Structured output.** Excel reports include formatted headers, auto-sized columns, conditional formatting, and a side-by-side Drive-Up / Climate Controlled layout (Market Comps, Facility List tabs). Ready for deal books and IC presentations.
 - **Error handling with grace.** Users see clear, actionable error messages — never raw stack traces or cryptic codes.
 - **Audit trail.** Every search is logged with user, action type, location, and timestamp. Usage is queryable by admins.
 - **Production-ready architecture.** SQLAlchemy ORM with SQLite for development and PostgreSQL for production. JWT auth, rate limiting, admin controls, and encrypted storage — not bolted on later, built in from the start.
@@ -86,24 +86,40 @@ Architectural & Engineering (5%), Permits & Impact Fees (2.5%), Geotechnical/Env
 ### Location Adjustment
 USACE Area Cost Factors applied to base costs per city (e.g., NYC 1.35, Austin 0.92, etc.)
 
+## Market Comps — Search Strategy
+
+### Tiered Escalation (cheapest first)
+The agent uses a 4-tier strategy, escalating per-facility only when prior tiers fail:
+
+1. **Tier 1 — Search snippets (FREE):** Extract prices directly from search result snippets. No page fetches.
+2. **Tier 2 — Aggregator area page (1 fetch, many facilities):** Fetch a StorageUnits.com or SelfStorage.com area page that lists multiple facilities with prices on a single page.
+3. **Tier 3 — Firecrawl (JS rendering → Markdown):** For facilities still missing prices, use `firecrawl_scrape.py` to render their website server-side and return clean Markdown. Requires `FIRECRAWL_API_KEY` env var.
+4. **Tier 4 — Playwright (local headless browser, last resort):** If Firecrawl fails, use `scrape_prices.py` to launch a local headless Chromium browser and extract visible text.
+
+### Slashed / Strikethrough Prices
+Many facility websites show a crossed-out original price next to a discounted "Web Rate." The slashed price is the **in-store rate**; the discounted price is the **online rate**. Example: ~~$72~~ $36 → In-Store = $72, Online = $36.
+
 ## Market Comps Output
 
-### Excel Tabs
-1. **Comps Detail** — full row-by-row data for every facility + unit type
-2. **Market Summary** — average, min, max online/in-store rate per unit size (split by Drive-Up and Climate Controlled)
-3. **Facility List** — one row per facility with address, distance, drive time, phone, website
+### Excel Tabs (2-tab format)
+1. **Market Comps** — side-by-side comparison layout
+   - LEFT: "Drive-Up / Standard Units" (orange header #FCE4D6)
+   - RIGHT: "Climate Controlled Units" (green header #E2EFDA)
+   - Each side: In-Store rates on top, Online (Discounted) rates below, separated by a blank row
+   - Facilities as columns (closest first), unit sizes as rows (5x5 through 10x30)
+   - Blank cells for missing data (never "N/A")
+2. **Facility List** — one row per facility with address, distance, drive time, phone, website
 
 ### Target Unit Types
 5x5, 5x10, 10x10, 10x15, 10x20, 10x25, 10x30, Parking/Vehicle Storage
 
 ### Key Rules
-- Always collect both online and in-store rates; mark "N/A" if not found
+- Always collect both online and in-store rates; leave cell blank if not found
 - Distance from subject property is required for every facility
 - Sort all output by distance (closest first)
 - Do not fabricate pricing — only use data from web sources
-- Capture promotions in Notes column
 - Default radius: 5 miles (configurable)
-- Filename: `storage_comps_[location]_[YYYYMMDD].xlsx`
+- Filename: `storage_comps_[location]_[date].xlsx`
 
 ## Web App Endpoints
 
@@ -127,6 +143,7 @@ JWT_SECRET=<random-string-for-signing-tokens>
 ADMIN_EMAIL=<admin-user-email>
 DAILY_SEARCH_LIMIT=50          # optional, default 50
 DATABASE_URL=sqlite:///./storage_tools.db  # or postgresql:// for production
+FIRECRAWL_API_KEY=<firecrawl-api-key>  # optional, enables Tier 3 scraping
 ```
 Note: No server-side ANTHROPIC_API_KEY needed — users bring their own.
 
@@ -138,6 +155,8 @@ Real Estate Project/
 ├── storage_comps_app.py            # Desktop app (tkinter, ~1300 lines)
 ├── storage_comps_agent.py          # CLI agent script
 ├── fact_check_agent.py             # Fact-check & audit CLI agent
+├── firecrawl_scrape.py             # Firecrawl API scraper (Tier 3 — JS → Markdown)
+├── scrape_prices.py                # Playwright headless browser scraper (Tier 4 — fallback)
 ├── build_comps.py                  # Build helper
 ├── requirements.txt                # Desktop dependencies
 ├── Launch Storage Comps App.bat    # Desktop shortcut
@@ -162,6 +181,7 @@ Real Estate Project/
 - **Desktop UI:** tkinter + ttk
 - **Web Framework:** FastAPI + uvicorn
 - **AI:** Claude Agent SDK (`claude-agent-sdk`)
+- **Scraping:** Firecrawl (`firecrawl-py`) for JS→Markdown, Playwright for headless browser fallback
 - **Database:** SQLAlchemy (SQLite / PostgreSQL)
 - **Auth:** JWT (python-jose), bcrypt (passlib), Fernet encryption (cryptography)
 - **Excel:** openpyxl
@@ -172,11 +192,16 @@ Real Estate Project/
 
 ### Desktop
 ```
-pip install openpyxl geopy claude-agent-sdk anyio
+pip install openpyxl geopy claude-agent-sdk anyio playwright firecrawl-py
+playwright install chromium
 ```
 
 ### Web
 ```
-pip install fastapi uvicorn[standard] jinja2 python-multipart python-jose[cryptography] passlib[bcrypt] sqlalchemy openpyxl claude-agent-sdk anyio geopy python-dotenv
+pip install fastapi uvicorn[standard] jinja2 python-multipart python-jose[cryptography] passlib[bcrypt] sqlalchemy openpyxl claude-agent-sdk anyio geopy python-dotenv playwright firecrawl-py
+playwright install chromium
 ```
 Note: Use `bcrypt==4.0.1` to avoid compatibility issues with passlib.
+
+### Environment Variables
+- `FIRECRAWL_API_KEY` — Required for Tier 3 scraping. Get a key at firecrawl.dev.
