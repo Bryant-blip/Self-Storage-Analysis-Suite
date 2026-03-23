@@ -96,10 +96,13 @@ For facilities that still have N/A prices after Phase 1:
   Extract the dollar amount.
 
 ## Target Unit Types
-Collect pricing for ALL of these sizes when available:
+Collect pricing for ALL of these sizes when available, for BOTH
+Climate Controlled AND Drive-Up units:
 5x5, 5x10, 10x10, 10x15, 10x20, 10x25, 10x30, Parking/Vehicle Storage
 
-Do NOT limit to just 10x10 and 10x20. Include every unit size the facility offers.
+If a facility offers a 5x5 climate controlled unit, include it. If they offer
+a 5x5 drive-up unit, include that too. Do NOT skip smaller sizes like 5x5.
+Include every unit size the facility offers.
 
 ## Collect per facility:
 Name | Address | Phone | Website | Online rates by unit size | In-store rates |
