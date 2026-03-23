@@ -262,7 +262,7 @@ for as many unit types as possible. Output a formatted Excel file.
 
 ### Phase 2 — Write the Excel file IMMEDIATELY
 After Phase 1, write the Excel file with whatever data you have so far.
-Use N/A for any missing prices. This ensures a file always exists even if
+Leave cells blank for any missing prices. This ensures a file always exists even if
 you run out of turns later.
 
 ### Phase 3 — Fill in missing prices
@@ -319,30 +319,40 @@ from subject using Haversine formula, 25 mph estimate.
 
 Include only facilities within the search radius. Sort closest first.
 
-## Excel — 3 Tabs
+## Excel — 2 Tabs
 
-Tab 1 "Comps Detail" — one row per facility x unit type
-Columns: Facility Name | Address | Distance (mi) | Unit Type | Sq Ft |
-  Climate Controlled | Online Rate ($/mo) | In-Store Rate ($/mo) |
-  Notes/Promotions | Date Pulled | Source URL | Drive Time (min)
-Format: bold header (#BDD7EE), currency, auto-width columns, freeze row 1
+Tab 1 "Market Comps" — side-by-side comparison layout
+  LEFT SIDE: "DRIVE-UP / STANDARD UNITS" header (bold, orange #FCE4D6)
+  RIGHT SIDE: "CLIMATE CONTROLLED UNITS" header (bold, green #E2EFDA)
+  Leave a 1-column gap between the two sides.
 
-Tab 2 "Market Summary" — two sections separated by a blank row
-  Section 1 header: "CLIMATE CONTROLLED UNITS" (bold, green #E2EFDA)
-  Section 2 header: "DRIVE UP / STANDARD UNITS" (bold, orange #FCE4D6)
-  Each section columns: Unit Type | Sq Ft | Avg Online | Min Online | Max Online |
-    Avg In-Store | Min In-Store | Max In-Store | # Comps
-  Currency format on all rate columns.
+  Each side has this IDENTICAL structure:
 
-Tab 3 "Facility List" — one row per facility
+  Section 1: "In-Store" sub-header
+  Columns: Sq Ft | Size | [Facility 1 Name] | [Facility 2 Name] | ...
+  Rows (one per unit size): 25/5x5, 50/5x10, 100/10x10, 150/10x15, 200/10x20, 250/10x25, 300/10x30
+  Cell values are dollar amounts (e.g. $115.00). Leave cell BLANK if no data.
+
+  Then a BLANK ROW separator.
+
+  Section 2: "Online (Discounted)" sub-header
+  Same columns: Sq Ft | Size | [Facility 1 Name] | [Facility 2 Name] | ...
+  Same rows as above.
+
+  Facility columns should be in order: closest facility first (left) to farthest (right).
+  Format: bold headers, currency format, auto-width columns.
+  If a facility has no units of a given type (drive-up or climate controlled),
+  omit that facility's column from that side entirely.
+
+Tab 2 "Facility List" — one row per facility
 Columns: Facility Name | Address | Distance (mi) | Drive Time (min) | Phone | Website
 Format: bold header (#FCE4D6), sorted by distance
 
 ## Rules
-- Never fabricate pricing. Mark missing data as N/A.
-- Distance required on every row — exclude facility if unknown.
+- Never fabricate pricing. Leave the cell BLANK if no data — do NOT write "N/A".
+- Distance required — exclude facility if unknown.
 - Write Excel via openpyxl using the Bash tool.
-- A facility with ALL N/A prices is useless — try harder to find at least one price.
+- A facility with no prices at all is useless — try harder to find at least one price.
 """
 
 COST_AGENT_PROMPT = """
@@ -1247,10 +1257,10 @@ Instructions:
    and SelfStorage.com — they return static HTML with actual prices).
 3. Collect ALL unit sizes (5x5, 5x10, 10x10, 10x15, 10x20, 10x25, 10x30).
 4. Calculate distance/drive time from "{location}" for each facility.
-5. Write the Excel file using openpyxl (3-tab format per system prompt).
+5. Write the Excel file using openpyxl (2-tab format per system prompt).
 6. Print a brief summary: facilities found, price ranges by unit size.
 
-No fabricated data — mark missing as N/A.
+No fabricated data — leave cells blank if no price found.
 """
         try:
             async for message in query(
