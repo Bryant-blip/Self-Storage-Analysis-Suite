@@ -15,3 +15,6 @@ geopy
 # HTTP requests + HTML parsing (used by the agent's Bash scripts)
 requests
 beautifulsoup4
+
+# Headless browser for scraping JS-rendered facility websites
+playwright

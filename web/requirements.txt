@@ -13,3 +13,4 @@ claude-agent-sdk
 anyio
 geopy
 python-dotenv
+playwright
