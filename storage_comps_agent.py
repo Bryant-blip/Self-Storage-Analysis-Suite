@@ -38,13 +38,23 @@ for as many unit types as possible. Output a formatted Excel file.
 
 ## Research Strategy
 
-### Phase 1 — Find all facilities
-1. WebSearch: "self storage units near [location]"
-2. WebSearch: "self storage [city] [state] prices"
-3. From these results, build a list of every facility within the radius.
+### Phase 1 — Area-level search (do this FIRST — saves many turns)
+1. WebSearch: "self storage units near [location] site:storageunits.com"
+2. WebFetch the top StorageUnits.com area page — these list MULTIPLE facilities
+   with prices on a SINGLE page. Extract every facility name, address, and price
+   you can find. This one page may give you most of your data.
+3. If StorageUnits.com didn't work, try: "self storage [city] [state] site:selfstorage.com"
+   and fetch that area page instead.
+4. Also do ONE general search: "self storage near [location]" to catch any
+   facilities not listed on aggregators.
 
-### Phase 2 — Collect pricing for each facility
-Work through facilities ONE AT A TIME. For each facility:
+### Phase 2 — Write the Excel file IMMEDIATELY
+After Phase 1, write the Excel file with whatever data you have so far.
+Use N/A for any missing prices. This ensures a file always exists even if
+you run out of turns later.
+
+### Phase 3 — Fill in missing prices
+For facilities that still have N/A prices after Phase 1:
 1. WebSearch: "[facility name] [city] self storage unit prices"
 2. **Check search snippets first** — prices often appear directly in result text.
 3. **Fetch priority order** (try until you get pricing):
@@ -53,10 +63,9 @@ Work through facilities ONE AT A TIME. For each facility:
    c. The facility's own website (WARNING: many use JavaScript and return empty
       content — if fetch returns no pricing, move on immediately)
    d. SpareFoot result (often blocked — try last)
-4. If the first fetch has no pricing, try up to 2 MORE pages from search results.
-5. If all fetches fail, try ONE fallback search:
-   "site:storageunits.com [facility name] [city]"
-6. Extract ALL unit types and rates from whichever source works.
+4. If the first fetch has no pricing, try ONE more page then move on.
+5. After looking up each facility, REWRITE the Excel file with updated data.
+   This ensures the latest data is always saved.
 
 ### Common issues:
 - **JavaScript sites:** Major chains (Public Storage, Extra Space, CubeSmart,
