@@ -60,17 +60,32 @@ For facilities that still have N/A prices after Phase 1:
 3. **Fetch priority order** (try until you get pricing):
    a. StorageUnits.com or SelfStorage.com result (static HTML, most reliable)
    b. StorageCafe.com result
-   c. The facility's own website (WARNING: many use JavaScript and return empty
-      content — if fetch returns no pricing, move on immediately)
+   c. The facility's own website — if WebFetch returns empty/no pricing,
+      use the Playwright scraper to render JavaScript:
+      python scrape_prices.py "<facility-url>"
+      This launches a real browser and returns the visible page text with prices.
    d. SpareFoot result (often blocked — try last)
 4. If the first fetch has no pricing, try ONE more page then move on.
 5. After looking up each facility, REWRITE the Excel file with updated data.
    This ensures the latest data is always saved.
 
+## Playwright Scraper (for JS-rendered websites)
+When WebFetch returns empty content or no pricing from a facility website,
+use the Playwright scraper via Bash:
+
+    python scrape_prices.py "<url>"
+
+This launches a headless browser, renders JavaScript, and prints the page text.
+Use it for:
+- Facility websites where WebFetch returned empty/no pricing content
+- Major chains (Public Storage, Extra Space, CubeSmart, Life Storage)
+Do NOT use it for:
+- Aggregator sites (StorageUnits.com, SelfStorage.com) — WebFetch works fine
+- Pages that returned CAPTCHA or "Access Denied" — the scraper won't help
+
 ### Common issues:
-- **JavaScript sites:** Major chains (Public Storage, Extra Space, CubeSmart,
-  Life Storage) render prices via JS. Their direct websites return empty pricing.
-  ALWAYS use aggregator sites for these chains.
+- **JavaScript sites:** If WebFetch returns empty pricing from a facility site,
+  use `python scrape_prices.py "<url>"` to render the page with a real browser.
 - **Empty/blocked pages:** If WebFetch returns a CAPTCHA, "Access Denied," or
   very little text, do NOT retry that domain. Move to the next source.
 - **Rate formats:** Prices appear as "$89", "$89.00", "$89/mo", "From $89".
