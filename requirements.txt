@@ -1,6 +1,6 @@
-# Self Storage Market Rent Comps Agent — Dependencies
+# Self Storage Tools — Desktop App Dependencies
 
-# Claude Agent SDK (provides WebSearch, WebFetch, Bash tools)
+# Claude Agent SDK (used by Fact-Check and Market Analysis agents)
 claude-agent-sdk
 
 # Async runtime (required by Agent SDK)
@@ -12,12 +12,14 @@ openpyxl
 # Distance / geocoding calculations
 geopy
 
-# HTTP requests + HTML parsing (used by the agent's Bash scripts)
+# HTTP requests (Google Places / Geocoding API calls)
 requests
-beautifulsoup4
 
-# Headless browser for scraping JS-rendered facility websites
-playwright
-
-# Firecrawl API — renders JS pages to clean Markdown for AI parsing
+# Competitor website scraping (handles JS rendering + Cloudflare)
 firecrawl-py
+
+# Pricing extraction via Claude API (direct, not Agent SDK)
+anthropic
+
+# Environment variable loading from .env
+python-dotenv

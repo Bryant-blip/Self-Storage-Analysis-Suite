@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Storage Intel — Deal Analyzer</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           background: #f1f5f9; color: #1e293b; font-size: 14px; }
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    .app-shell { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    .top-header { background: #fff; border-bottom: 1px solid #e2e8f0;
+                  padding: 0 24px; height: 56px; display: flex; align-items: center;
+                  justify-content: space-between; flex-shrink: 0; z-index: 100;
+                  box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+    .logo { display: flex; align-items: center; gap: 8px; }
+    .logo-icon { width: 28px; height: 28px; background: #1a7a4a; border-radius: 6px;
+                 display: flex; align-items: center; justify-content: center;
+                 color: #fff; font-weight: 800; font-size: 13px; }
+    .logo-text { font-weight: 700; font-size: 16px; color: #1e293b; letter-spacing: -.3px; }
+    .logo-sub { font-size: 11px; color: #64748b; margin-top: 1px; }
+    .body-row { display: flex; flex: 1; overflow: hidden; }
+    /* Sidebar */
+    .sidebar { width: 220px; background: #f8f9fa; border-right: 1px solid #e2e8f0;
+               overflow-y: auto; flex-shrink: 0; padding: 12px 0; }
+    .sidebar-section { margin-bottom: 4px; }
+    .sidebar-header { display: flex; align-items: center; justify-content: space-between;
+                      padding: 6px 16px; font-size: 11px; font-weight: 600;
+                      color: #64748b; text-transform: uppercase; letter-spacing: .6px;
+                      cursor: pointer; user-select: none; }
+    .sidebar-header:hover { color: #1e293b; }
+    .sidebar-chevron { font-size: 10px; transition: transform .15s; }
+    .sidebar-chevron.open { transform: rotate(90deg); }
+    .sidebar-items { overflow: hidden; }
+    .sidebar-item { display: block; padding: 7px 16px 7px 24px; font-size: 13px;
+                    color: #475569; cursor: pointer; border-left: 3px solid transparent;
+                    transition: all .12s; text-decoration: none; }
+    .sidebar-item:hover { background: #f0fdf4; color: #1a7a4a; border-left-color: #86efac; }
+    .sidebar-item.active { background: #f0fdf4; color: #1a7a4a;
+                           border-left-color: #1a7a4a; font-weight: 600; }
+    /* Main content */
+    .main-content { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+    .filter-bar { background: #fff; border-bottom: 1px solid #e2e8f0;
+                  padding: 10px 24px; display: flex; align-items: center;
+                  gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+    .filter-select { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px;
+                     font-size: 13px; color: #1e293b; background: #fff;
+                     cursor: pointer; outline: none; }
+    .filter-select:focus { border-color: #1a7a4a; box-shadow: 0 0 0 2px rgba(26,122,74,.1); }
+    .date-tabs { display: flex; gap: 0; margin-left: auto; border: 1px solid #e2e8f0;
+                 border-radius: 6px; overflow: hidden; }
+    .date-tab { padding: 6px 14px; font-size: 13px; cursor: pointer; background: #fff;
+                color: #64748b; border: none; transition: all .12s; }
+    .date-tab.active { background: #1a7a4a; color: #fff; font-weight: 600; }
+    .date-tab:hover:not(.active) { background: #f0fdf4; color: #1a7a4a; }
+    /* Content area */
+    .content-area { padding: 24px; flex: 1; }
+    /* Metric cards */
+    .cards-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px;
+                 margin-bottom: 24px; }
+    @media (max-width: 1200px) { .cards-row { grid-template-columns: repeat(3, 1fr); } }
+    .metric-card { background: #fff; border-radius: 10px; padding: 16px 18px;
+                   border-left: 4px solid #1a7a4a;
+                   box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+    .card-label { font-size: 11px; color: #64748b; font-weight: 600;
+                  text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+    .card-value { font-size: 24px; font-weight: 700; color: #1e293b; line-height: 1; }
+    .card-sub { font-size: 11px; color: #94a3b8; margin-top: 5px; }
+    /* Charts row */
+    .charts-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+                  margin-bottom: 24px; }
+    .chart-card { background: #fff; border-radius: 10px;
+                  box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }
+    .chart-header { padding: 14px 16px 8px; display: flex; align-items: center;
+                    justify-content: space-between; border-bottom: 1px solid #f1f5f9; }
+    .chart-title { font-size: 13px; font-weight: 600; color: #1e293b; }
+    .chart-controls { display: flex; gap: 6px; }
+    .chart-select { padding: 3px 8px; border: 1px solid #e2e8f0; border-radius: 5px;
+                    font-size: 11px; background: #fff; color: #475569; outline: none; }
+    .chart-body { padding: 12px; height: 200px; position: relative; }
+    /* Section cards */
+    .section-card { background: #fff; border-radius: 10px; margin-bottom: 24px;
+                    box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }
+    .section-header { padding: 16px 20px; border-bottom: 1px solid #f1f5f9;
+                      display: flex; align-items: center; justify-content: space-between; }
+    .section-title { font-size: 14px; font-weight: 600; color: #1e293b; }
+    .section-body { padding: 16px 20px; }
+    /* Tables */
+    .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .data-table th { text-align: left; padding: 8px 10px; font-size: 11px; font-weight: 600;
+                     color: #64748b; text-transform: uppercase; letter-spacing: .5px;
+                     border-bottom: 2px solid #f1f5f9; cursor: pointer; white-space: nowrap; }
+    .data-table th:hover { color: #1a7a4a; }
+    .data-table th .sort-arrow { margin-left: 4px; opacity: .5; }
+    .data-table td { padding: 9px 10px; border-bottom: 1px solid #f8fafc;
+                     color: #334155; vertical-align: middle; }
+    .data-table tr:hover td { background: #f8fafc; }
+    .data-table tr:last-child td { border-bottom: none; }
+    /* Score badge */
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px;
+             font-size: 11px; font-weight: 700; }
+    .badge-green  { background: #dcfce7; color: #166534; }
+    .badge-yellow { background: #fef9c3; color: #854d0e; }
+    .badge-orange { background: #ffedd5; color: #9a3412; }
+    .badge-red    { background: #fee2e2; color: #991b1b; }
+    .badge-gray   { background: #f1f5f9; color: #64748b; }
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 14px;
+           border-radius: 6px; font-size: 13px; cursor: pointer; border: none;
+           font-weight: 500; transition: all .12s; }
+    .btn-primary { background: #1a7a4a; color: #fff; }
+    .btn-primary:hover { background: #15653e; }
+    .btn-outline { background: #fff; color: #475569; border: 1px solid #e2e8f0; }
+    .btn-outline:hover { background: #f8fafc; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn-link { background: none; color: #1a7a4a; border: none; font-size: 12px;
+                cursor: pointer; padding: 0; font-weight: 500; }
+    .btn-link:hover { text-decoration: underline; }
+    /* Table controls */
+    .table-controls { display: flex; gap: 10px; align-items: center;
+                      flex-wrap: wrap; margin-bottom: 14px; }
+    .search-input { padding: 7px 12px; border: 1px solid #e2e8f0; border-radius: 6px;
+                    font-size: 13px; outline: none; flex: 1; min-width: 180px; }
+    .search-input:focus { border-color: #1a7a4a; box-shadow: 0 0 0 2px rgba(26,122,74,.1); }
+    .range-label { font-size: 12px; color: #64748b; }
+    .range-input { accent-color: #1a7a4a; cursor: pointer; }
+    /* Pagination */
+    .pagination { display: flex; align-items: center; gap: 8px; margin-top: 14px;
+                  justify-content: flex-end; font-size: 13px; }
+    .page-btn { padding: 4px 10px; border: 1px solid #e2e8f0; border-radius: 5px;
+                background: #fff; cursor: pointer; color: #475569; }
+    .page-btn:hover:not(:disabled) { background: #f0fdf4; border-color: #1a7a4a; color: #1a7a4a; }
+    .page-btn:disabled { opacity: .4; cursor: default; }
+    .page-info { color: #64748b; }
+    /* ZIP drill-down */
+    .zip-panel { background: #f0fdf4; border: 1px solid #86efac; border-radius: 10px;
+                 margin-bottom: 24px; overflow: hidden;
+                 animation: slideDown .2s ease; }
+    @keyframes slideDown { from { opacity:0; transform:translateY(-8px); }
+                           to   { opacity:1; transform:translateY(0); } }
+    .zip-panel-header { padding: 14px 20px; background: #1a7a4a; color: #fff;
+                        display: flex; align-items: center; justify-content: space-between; }
+    .zip-panel-title { font-size: 14px; font-weight: 600; }
+    .zip-close { background: none; border: none; color: #fff; font-size: 18px;
+                 cursor: pointer; line-height: 1; padding: 0 4px; }
+    .zip-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+                 padding: 16px 20px; background: #fff; }
+    .zip-stat { text-align: center; }
+    .zip-stat-val { font-size: 20px; font-weight: 700; color: #1a7a4a; }
+    .zip-stat-lbl { font-size: 11px; color: #64748b; margin-top: 2px; }
+    .zip-section { padding: 0 20px 16px; }
+    .zip-section-title { font-size: 12px; font-weight: 600; color: #64748b;
+                         text-transform: uppercase; letter-spacing: .5px;
+                         padding: 12px 0 8px; border-top: 1px solid #f1f5f9; }
+    /* Loading */
+    .loading { text-align: center; padding: 40px; color: #94a3b8; font-size: 14px; }
+    .spinner { display: inline-block; width: 20px; height: 20px;
+               border: 2px solid #e2e8f0; border-top-color: #1a7a4a;
+               border-radius: 50%; animation: spin .7s linear infinite; margin-right: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    /* Comparison chart */
+    .comparison-chart-wrap { height: 280px; position: relative; }
+    .empty-state { padding: 32px; text-align: center; color: #94a3b8; }
+    .empty-state-icon { font-size: 36px; margin-bottom: 8px; }
+    /* Find Deals — form controls */
+    .fd-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
+    .fd-field { display: flex; flex-direction: column; gap: 5px; }
+    .fd-label { font-size: 11px; font-weight: 600; color: #64748b;
+                text-transform: uppercase; letter-spacing: .5px; }
+    .fd-input, .fd-select { padding: 7px 10px; border: 1px solid #e2e8f0;
+                            border-radius: 6px; font-size: 13px; color: #1e293b;
+                            background: #fff; outline: none; }
+    .fd-input:focus, .fd-select:focus { border-color: #1a7a4a;
+                                        box-shadow: 0 0 0 2px rgba(26,122,74,.1); }
+    .fd-check { display: inline-flex; align-items: center; gap: 6px;
+                font-size: 13px; color: #475569; cursor: pointer; user-select: none; }
+    .fd-check input { accent-color: #1a7a4a; width: 14px; height: 14px; }
+    .fd-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+    .fd-banner { background: #f0fdf4; border: 1px solid #86efac;
+                 border-left: 4px solid #1a7a4a; border-radius: 8px;
+                 padding: 12px 16px; margin-bottom: 16px;
+                 display: flex; align-items: center; justify-content: space-between;
+                 animation: slideDown .2s ease; }
+    .fd-banner-text { font-size: 13px; color: #166534; font-weight: 500; }
+    .fd-banner-close { background: none; border: none; font-size: 18px;
+                       color: #166534; cursor: pointer; padding: 0 4px; line-height: 1; }
+    /* Active run card */
+    .fd-run { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+              padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+              margin-bottom: 10px; }
+    .fd-run-head { display: flex; justify-content: space-between; align-items: center;
+                   margin-bottom: 8px; }
+    .fd-run-title { font-size: 14px; font-weight: 600; color: #1e293b; }
+    .fd-run-meta { font-size: 11px; color: #94a3b8; }
+    .fd-status-dot { display: inline-block; width: 8px; height: 8px;
+                     border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+    .fd-status-dot.running  { background: #1a7a4a; animation: pulse 1.4s infinite; }
+    .fd-status-dot.finished { background: #1a7a4a; }
+    .fd-status-dot.stopped  { background: #94a3b8; }
+    .fd-status-dot.error    { background: #dc2626; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+    .fd-progress-wrap { height: 6px; background: #f1f5f9; border-radius: 3px;
+                        overflow: hidden; margin-bottom: 6px; }
+    .fd-progress-bar { height: 100%; background: #1a7a4a;
+                       transition: width .25s ease; }
+    .fd-run-current { font-size: 12px; color: #64748b;
+                      font-family: 'Consolas', 'Menlo', monospace; }
+    /* Log pane — light theme to match page */
+    .fd-log { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+              padding: 10px 12px; height: 260px; overflow-y: auto;
+              font-family: 'Consolas', 'Menlo', monospace; font-size: 12px;
+              color: #475569; line-height: 1.55; white-space: pre-wrap;
+              word-break: break-word; }
+    .fd-log-line.info  { color: #1a7a4a; }
+    .fd-log-line.warn  { color: #b45309; }
+    .fd-log-line.err   { color: #b91c1c; }
+    .fd-log-empty { color: #94a3b8; font-style: italic; }
+    /* History table */
+    .fd-history { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .fd-history th { text-align: left; padding: 8px 10px; font-size: 11px;
+                     font-weight: 600; color: #64748b; text-transform: uppercase;
+                     letter-spacing: .5px; border-bottom: 2px solid #f1f5f9; }
+    .fd-history td { padding: 9px 10px; border-bottom: 1px solid #f8fafc;
+                     color: #334155; }
+    .fd-history tr:hover td { background: #f8fafc; }
+    .fd-tag { display: inline-block; padding: 1px 8px; border-radius: 10px;
+              font-size: 11px; font-weight: 600; }
+    .fd-tag.running  { background: #dcfce7; color: #166534; }
+    .fd-tag.finished { background: #dcfce7; color: #166534; }
+    .fd-tag.stopped  { background: #f1f5f9; color: #64748b; }
+    .fd-tag.error    { background: #fee2e2; color: #991b1b; }
+    .btn-danger { background: #fff; color: #b91c1c; border: 1px solid #fecaca; }
+    .btn-danger:hover { background: #fef2f2; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const UNIT_SIZES = ['All', '5x5', '5x10', '10x10', '10x15', '10x20', '10x30'];
+const UNIT_TYPES = ['All', 'Drive-Up', 'Climate Controlled'];
+const MIN_YOC_OPTIONS = ['All', '13.5%+', '15%+', '17.5%+', '20%+'];
+const STATE_COLORS = {
+  Washington:      '#1a7a4a',
+  Utah:            '#3b82f6',
+  'North Carolina':'#f59e0b',
+  Virginia:        '#f97316',
+};
+const CHART_COLORS = ['#1a7a4a','#3b82f6','#f59e0b','#f97316','#8b5cf6','#ec4899'];
+
+function fmt(v, type) {
+  if (v === null || v === undefined) return '—';
+  switch(type) {
+    case 'pct':  return (v * 100).toFixed(1) + '%';
+    case 'usd':  return '$' + Math.round(v).toLocaleString();
+    case 'psf':  return '$' + (+v).toFixed(2);
+    case 'num':  return Math.round(v).toLocaleString();
+    case 'dec':  return (+v).toFixed(2);
+    default:     return v;
+  }
+}
+
+function popGateBadge(gate) {
+  if (!gate) return null;
+  const cfg = {
+    subject_hit:  { label: 'S', title: 'Subject ZIP ≥ 30k',                  cls: 'badge-green'  },
+    combo_hit:    { label: 'C', title: 'Subject + closest neighbor ≥ 40k',    cls: 'badge-yellow' },
+    neighbor_hit: { label: 'N', title: 'Neighbor ZIP within 3 mi ≥ 30k',      cls: 'badge-orange' },
+  };
+  const c = cfg[gate];
+  if (!c) return null;
+  return <span className={`badge ${c.cls}`} title={c.title} style={{marginLeft:4,fontSize:10,padding:'1px 5px'}}>{c.label}</span>;
+}
+
+function scoreBadge(score) {
+  if (score === null || score === undefined) return <span className="badge badge-gray">—</span>;
+  const s = Math.round(score);
+  const cls = s >= 70 ? 'badge-green' : s >= 50 ? 'badge-yellow' : s >= 30 ? 'badge-orange' : 'badge-red';
+  return <span className={`badge ${cls}`}>{s}</span>;
+}
+
+function cardBorderColor(metric, value) {
+  if (metric === 'avg_yoc') {
+    if (value >= 0.135) return '#1a7a4a';
+    if (value >= 0.10)  return '#f59e0b';
+    return '#f97316';
+  }
+  if (metric === 'avg_psf') return '#3b82f6';
+  if (metric === 'avg_price_per_acre') return '#f59e0b';
+  return '#1a7a4a';
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+
+function Sidebar({ filters, setFilters, states, activeNav, setActiveNav }) {
+  const [open, setOpen] = useState({ findDeals: true, overview: true, markets: true, analytics: false, settings: false });
+  const toggle = k => setOpen(o => ({ ...o, [k]: !o[k] }));
+
+  const navItem = (label, key, onClick) => (
+    <div
+      className={`sidebar-item${activeNav === key ? ' active' : ''}`}
+      onClick={() => { setActiveNav(key); if (onClick) onClick(); }}
+    >{label}</div>
+  );
+
+  return (
+    <div className="sidebar">
+      <div className="sidebar-section">
+        <div className="sidebar-header" onClick={() => toggle('findDeals')}>
+          Find Deals <span className={`sidebar-chevron${open.findDeals ? ' open' : ''}`}>▶</span>
+        </div>
+        {open.findDeals && (
+          <div className="sidebar-items">
+            {navItem('New Search',  'find-new')}
+            {navItem('Active Runs', 'find-active')}
+            {navItem('Run History', 'find-history')}
+          </div>
+        )}
+      </div>
+
+      <div className="sidebar-section">
+        <div className="sidebar-header" onClick={() => toggle('overview')}>
+          Overview <span className={`sidebar-chevron${open.overview ? ' open' : ''}`}>▶</span>
+        </div>
+        {open.overview && (
+          <div className="sidebar-items">
+            {navItem('Dashboard', 'dashboard', () => setFilters(f => ({...f, state: 'all'})))}
+            {navItem('All Deals', 'deals')}
+          </div>
+        )}
+      </div>
+
+      <div className="sidebar-section">
+        <div className="sidebar-header" onClick={() => toggle('markets')}>
+          Markets <span className={`sidebar-chevron${open.markets ? ' open' : ''}`}>▶</span>
+        </div>
+        {open.markets && (
+          <div className="sidebar-items">
+            <div
+              className={`sidebar-item${filters.state === 'all' ? ' active' : ''}`}
+              onClick={() => { setFilters(f => ({...f, state: 'all'})); setActiveNav('dashboard'); }}
+            >All Markets</div>
+            {states.map(s => (
+              <div
+                key={s.state}
+                className={`sidebar-item${filters.state === s.state ? ' active' : ''}`}
+                onClick={() => { setFilters(f => ({...f, state: s.state})); setActiveNav('dashboard'); }}
+              >
+                {s.state}
+                <span style={{float:'right',fontSize:11,color:'#94a3b8'}}>{s.deal_count}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="sidebar-section">
+        <div className="sidebar-header" onClick={() => toggle('analytics')}>
+          Analytics <span className={`sidebar-chevron${open.analytics ? ' open' : ''}`}>▶</span>
+        </div>
+        {open.analytics && (
+          <div className="sidebar-items">
+            {navItem('Rent Trends', 'trends')}
+            {navItem('Land Pricing', 'land')}
+            {navItem('Population Data', 'population')}
+            {navItem('Deal Scores', 'scores')}
+          </div>
+        )}
+      </div>
+
+      <div className="sidebar-section">
+        <div className="sidebar-header" onClick={() => toggle('settings')}>
+          Settings <span className={`sidebar-chevron${open.settings ? ' open' : ''}`}>▶</span>
+        </div>
+        {open.settings && (
+          <div className="sidebar-items">
+            {navItem('Filters', 'filters')}
+            {navItem('Export Data', 'export')}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Filter Bar ────────────────────────────────────────────────────────────────
+
+function FilterBar({ filters, setFilters, states }) {
+  const set = (k, v) => setFilters(f => ({...f, [k]: v}));
+  const minYocMap = { 'All': '', '13.5%+': '13.5', '15%+': '15', '17.5%+': '17.5', '20%+': '20' };
+
+  return (
+    <div className="filter-bar">
+      <select className="filter-select" value={filters.state}
+              onChange={e => set('state', e.target.value)}>
+        <option value="all">All States</option>
+        {states.map(s => <option key={s.state} value={s.state}>{s.state}</option>)}
+      </select>
+
+      <select className="filter-select" value={filters.unitSize}
+              onChange={e => set('unitSize', e.target.value)}>
+        {UNIT_SIZES.map(s => <option key={s} value={s === 'All' ? '' : s}>{s}</option>)}
+      </select>
+
+      <select className="filter-select" value={filters.unitType}
+              onChange={e => set('unitType', e.target.value)}>
+        <option value="">All Types</option>
+        <option value="drive_up">Drive-Up</option>
+        <option value="climate_control">Climate Controlled</option>
+      </select>
+
+      <select className="filter-select" value={filters.minYoc}
+              onChange={e => set('minYoc', e.target.value)}>
+        {MIN_YOC_OPTIONS.map(o => <option key={o} value={minYocMap[o]}>{o}</option>)}
+      </select>
+
+      <div className="date-tabs" style={{marginLeft:'auto'}}>
+        {['30d','90d','all'].map(r => (
+          <button key={r} className={`date-tab${filters.dateRange === r ? ' active' : ''}`}
+                  onClick={() => set('dateRange', r)}>
+            {r === '30d' ? 'Last 30 Days' : r === '90d' ? 'Last 90 Days' : 'All Time'}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Metric Cards ──────────────────────────────────────────────────────────────
+
+function MetricCards({ overview }) {
+  if (!overview) return (
+    <div className="cards-row">
+      {Array(6).fill(0).map((_, i) => (
+        <div key={i} className="metric-card" style={{borderLeftColor:'#e2e8f0'}}>
+          <div className="card-label">Loading…</div>
+          <div className="card-value" style={{color:'#e2e8f0'}}>—</div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const cards = [
+    { label: 'Total Deals',     value: (overview.total_deals||0).toLocaleString(),   sub: `${overview.total_markets||0} markets`, border: '#1a7a4a' },
+    { label: 'Avg Yield/Cost',  value: fmt(overview.avg_yoc, 'pct'),                 sub: 'Yield to cost',                        border: cardBorderColor('avg_yoc', overview.avg_yoc) },
+    { label: 'Avg Rent PSF',    value: fmt(overview.avg_psf, 'psf'),                 sub: 'Drive-up weighted avg',                border: '#3b82f6' },
+    { label: 'Avg Price/Acre',  value: fmt(overview.avg_price_per_acre, 'usd'),      sub: 'Land cost per acre',                   border: '#f59e0b' },
+    { label: 'Avg Population',  value: fmt(overview.avg_population, 'num'),          sub: 'Sum of ZIPs within 3 mi',              border: '#1a7a4a' },
+    { label: 'ZIPs 50K+',       value: (overview.zip_count_above_50k||0).toString(), sub: '3-mi pop above 50k',                  border: '#1a7a4a' },
+  ];
+
+  return (
+    <div className="cards-row">
+      {cards.map(c => (
+        <div key={c.label} className="metric-card" style={{borderLeftColor: c.border}}>
+          <div className="card-label">{c.label}</div>
+          <div className="card-value">{c.value}</div>
+          <div className="card-sub">{c.sub}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Line Chart ────────────────────────────────────────────────────────────────
+
+function LineChartCard({ title, metric, color, filters, extraControls }) {
+  const canvasRef = useRef(null);
+  const chartRef  = useRef(null);
+  const [data, setData] = useState([]);
+  const [localFilters, setLocalFilters] = useState({});
+
+  useEffect(() => {
+    const params = new URLSearchParams({
+      metric,
+      date_range: filters.dateRange,
+      ...(filters.state !== 'all' ? { state: filters.state } : {}),
+      ...localFilters,
+    });
+    fetch(`/api/trends?${params}`)
+      .then(r => r.json())
+      .then(setData)
+      .catch(() => {});
+  }, [filters, localFilters, metric]);
+
+  useEffect(() => {
+    if (!canvasRef.current || !data.length) return;
+    chartRef.current?.destroy();
+
+    // Group by state
+    const states = [...new Set(data.map(d => d.state))];
+    const dates  = [...new Set(data.map(d => d.date))].sort();
+
+    const datasets = states.map((state, i) => {
+      const stateData = dates.map(date => {
+        const row = data.find(d => d.date === date && d.state === state);
+        return row ? row.value : null;
+      });
+      return {
+        label: state,
+        data: stateData,
+        borderColor: STATE_COLORS[state] || CHART_COLORS[i % CHART_COLORS.length],
+        backgroundColor: 'transparent',
+        tension: 0.35,
+        pointRadius: 3,
+        spanGaps: true,
+      };
+    });
+
+    chartRef.current = new Chart(canvasRef.current, {
+      type: 'line',
+      data: { labels: dates, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: states.length > 1, position: 'bottom',
+                             labels: { boxWidth: 10, font: { size: 11 } } } },
+        scales: {
+          x: { ticks: { maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
+          y: { ticks: { font: { size: 10 } }, grid: { color: '#f1f5f9' } },
+        },
+      },
+    });
+    return () => chartRef.current?.destroy();
+  }, [data]);
+
+  return (
+    <div className="chart-card">
+      <div className="chart-header">
+        <div className="chart-title">{title}</div>
+        {extraControls && (
+          <div className="chart-controls">{extraControls(localFilters, setLocalFilters)}</div>
+        )}
+      </div>
+      <div className="chart-body">
+        {data.length === 0
+          ? <div className="empty-state" style={{padding:20,fontSize:12}}>No trend data yet</div>
+          : <canvas ref={canvasRef} />
+        }
+      </div>
+    </div>
+  );
+}
+
+// ── Stacked Bar Chart ─────────────────────────────────────────────────────────
+
+function DealsBarChart({ filters }) {
+  const canvasRef = useRef(null);
+  const chartRef  = useRef(null);
+  const [data, setData]  = useState([]);
+
+  useEffect(() => {
+    const params = new URLSearchParams({
+      metric: 'deal_count',
+      date_range: filters.dateRange,
+    });
+    fetch(`/api/trends?${params}`)
+      .then(r => r.json())
+      .then(setData)
+      .catch(() => {});
+  }, [filters.dateRange]);
+
+  useEffect(() => {
+    if (!canvasRef.current || !data.length) return;
+    chartRef.current?.destroy();
+
+    const states = [...new Set(data.map(d => d.state))];
+    const dates  = [...new Set(data.map(d => d.date))].sort();
+
+    const datasets = states.map((state, i) => ({
+      label: state,
+      data: dates.map(date => {
+        const row = data.find(d => d.date === date && d.state === state);
+        return row ? row.value : 0;
+      }),
+      backgroundColor: STATE_COLORS[state] || CHART_COLORS[i % CHART_COLORS.length],
+      stack: 'stack',
+    }));
+
+    chartRef.current = new Chart(canvasRef.current, {
+      type: 'bar',
+      data: { labels: dates, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } },
+        scales: {
+          x: { stacked: true, ticks: { maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
+          y: { stacked: true, ticks: { font: { size: 10 } }, grid: { color: '#f1f5f9' } },
+        },
+      },
+    });
+    return () => chartRef.current?.destroy();
+  }, [data]);
+
+  return (
+    <div className="chart-card">
+      <div className="chart-header">
+        <div className="chart-title">Deals Scraped by Market</div>
+      </div>
+      <div className="chart-body">
+        {data.length === 0
+          ? <div className="empty-state" style={{padding:20,fontSize:12}}>No data yet</div>
+          : <canvas ref={canvasRef} />
+        }
+      </div>
+    </div>
+  );
+}
+
+// ── Market Comparison ─────────────────────────────────────────────────────────
+
+function MarketMiniChart({ title, states, getValue, formatVal, color }) {
+  const canvasRef = useRef(null);
+  const chartRef  = useRef(null);
+
+  useEffect(() => {
+    if (!canvasRef.current || !states.length) return;
+    chartRef.current?.destroy();
+
+    const labels = states.map(s => s.state);
+    const data   = states.map(s => getValue(s));
+
+    chartRef.current = new Chart(canvasRef.current, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{ data, backgroundColor: color, borderRadius: 4, barThickness: 28 }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: { label: ctx => ' ' + formatVal(ctx.raw) },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { font: { size: 12, weight: '500' } },
+            grid: { display: false },
+          },
+          y: {
+            ticks: { font: { size: 10 }, callback: v => formatVal(v) },
+            grid: { color: '#f1f5f9' },
+            beginAtZero: true,
+          },
+        },
+      },
+    });
+    return () => chartRef.current?.destroy();
+  }, [states]);
+
+  return (
+    <div style={{flex:1, minWidth:0}}>
+      <div style={{fontSize:12,fontWeight:600,color:'#475569',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.05em'}}>
+        {title}
+      </div>
+      <div style={{height:220}}>
+        <canvas ref={canvasRef} />
+      </div>
+    </div>
+  );
+}
+
+function MarketComparison({ filters, overview, deals, onZipClick }) {
+  if (filters.state !== 'all') {
+    // ZIP breakdown table
+    const zipMap = {};
+    deals.forEach(d => {
+      if (!d.zip_code) return;
+      if (!zipMap[d.zip_code]) zipMap[d.zip_code] = { zip: d.zip_code, deals: [], state: d.market };
+      zipMap[d.zip_code].deals.push(d);
+    });
+    const zips = Object.values(zipMap).map(z => ({
+      zip: z.zip,
+      state: z.state,
+      count: z.deals.length,
+      avg_psf: z.deals.reduce((a,d) => a+(d.avg_psf||0),0) / z.deals.length,
+      avg_yoc: z.deals.reduce((a,d) => a+(d.yield_on_cost||0),0) / z.deals.length,
+      avg_pop: z.deals.reduce((a,d) => a+(d.population_3mi||0),0) / z.deals.length,
+      avg_ppa: z.deals.reduce((a,d) => a+(d.price_per_acre||0),0) / z.deals.length,
+    })).sort((a,b) => b.count - a.count);
+
+    return (
+      <div className="section-card">
+        <div className="section-header">
+          <div className="section-title">{filters.state} — ZIP Code Breakdown</div>
+        </div>
+        <div className="section-body" style={{padding:0}}>
+          {zips.length === 0
+            ? <div className="empty-state"><div>No deals found for selected filters</div></div>
+            : (
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>ZIP</th><th>Deals</th><th>Avg PSF</th><th>Avg YoC</th>
+                    <th>Avg Population</th><th>Avg $/Acre</th><th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {zips.map(z => (
+                    <tr key={z.zip}>
+                      <td style={{fontWeight:600}}>{z.zip}</td>
+                      <td>{z.count}</td>
+                      <td>{fmt(z.avg_psf,'psf')}</td>
+                      <td>{fmt(z.avg_yoc,'pct')}</td>
+                      <td>{fmt(z.avg_pop,'num')}</td>
+                      <td>{fmt(z.avg_ppa,'usd')}</td>
+                      <td>
+                        <button className="btn-link" onClick={() => onZipClick(z.zip, z.state)}>
+                          View →
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+          }
+        </div>
+      </div>
+    );
+  }
+
+  const states = (overview?.deals_by_state || []).filter(s => s.state);
+  if (!states.length) return null;
+
+  return (
+    <div className="section-card">
+      <div className="section-header">
+        <div className="section-title">Market Comparison</div>
+      </div>
+      <div className="section-body">
+        <div style={{display:'flex', gap:32}}>
+          <MarketMiniChart
+            title="Avg Rent PSF"
+            states={states}
+            getValue={s => +(s.avg_psf||0).toFixed(2)}
+            formatVal={v => '$' + (+v).toFixed(2)}
+            color="#1a7a4a"
+          />
+          <MarketMiniChart
+            title="Avg Yield on Cost"
+            states={states}
+            getValue={s => +((s.avg_yoc||0)*100).toFixed(1)}
+            formatVal={v => (+v).toFixed(1) + '%'}
+            color="#3b82f6"
+          />
+          <MarketMiniChart
+            title="Avg Land Price / Acre"
+            states={states}
+            getValue={s => Math.round((s.avg_price_per_acre||0))}
+            formatVal={v => '$' + Math.round(v).toLocaleString()}
+            color="#f59e0b"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ZIP Drill-Down ────────────────────────────────────────────────────────────
+
+function ZipDrillDown({ zip, onClose }) {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    if (!zip) return;
+    fetch(`/api/zip/${zip}`)
+      .then(r => r.json())
+      .then(setData)
+      .catch(() => {});
+  }, [zip]);
+
+  if (!zip) return null;
+
+  const summary    = data?.summary || {};
+  const facilities = data?.facilities || [];
+  const deals      = data?.deals || [];
+  const allSizes   = [...new Set(facilities.flatMap(f => Object.keys(f.rates || {})))].sort();
+
+  return (
+    <div className="zip-panel">
+      <div className="zip-panel-header">
+        <div className="zip-panel-title">ZIP Code {zip} — {summary.state || ''}</div>
+        <button className="zip-close" onClick={onClose}>✕</button>
+      </div>
+
+      {!data ? (
+        <div className="loading"><span className="spinner"/>Loading…</div>
+      ) : (
+        <>
+          <div className="zip-stats">
+            {[
+              { val: summary.deal_count, lbl: 'Deals' },
+              { val: fmt(summary.avg_psf,'psf'), lbl: 'Avg PSF' },
+              { val: fmt(summary.avg_yoc,'pct'), lbl: 'Avg YoC' },
+              { val: fmt(summary.avg_population,'num'), lbl: 'Avg Population' },
+            ].map(s => (
+              <div key={s.lbl} className="zip-stat">
+                <div className="zip-stat-val">{s.val}</div>
+                <div className="zip-stat-lbl">{s.lbl}</div>
+              </div>
+            ))}
+          </div>
+
+          {facilities.length > 0 && (
+            <div className="zip-section">
+              <div className="zip-section-title">10 Closest Competitors</div>
+              <div style={{overflowX:'auto'}}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Facility</th><th>Distance</th>
+                      {allSizes.map(s => <th key={s}>{s}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {facilities.map((f, i) => (
+                      <tr key={i}>
+                        <td style={{fontWeight:500}}>{f.facility_name}</td>
+                        <td>{f.distance_miles?.toFixed(1)} mi</td>
+                        {allSizes.map(s => (
+                          <td key={s}>{f.rates?.[s] ? `$${f.rates[s].toFixed(2)}` : '—'}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {deals.length > 0 && (
+            <div className="zip-section">
+              <div className="zip-section-title">Deals in ZIP {zip}</div>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Address</th><th>YoC</th><th>PSF</th>
+                    <th>Population</th><th>Score</th><th>Asking Price</th><th>Acres</th><th>Report</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deals.map(d => (
+                    <tr key={d.listing_id}>
+                      <td style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{d.address}</td>
+                      <td>{fmt(d.yield_on_cost,'pct')}</td>
+                      <td>{fmt(d.avg_psf,'psf')}</td>
+                      <td style={{whiteSpace:'nowrap'}}>
+                        {fmt(d.population_3mi,'num')}
+                        {popGateBadge(d.pop_gate_passed)}
+                      </td>
+                      <td>{scoreBadge(d.deal_score)}</td>
+                      <td>{fmt(d.asking_price,'usd')}</td>
+                      <td>{d.acres ? d.acres.toFixed(1) : '—'}</td>
+                      <td>
+                        {d.report_path && (
+                          <a href={`/api/report/${d.listing_id}`}
+                             className="btn btn-outline btn-sm" download>📄</a>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Deals Table ───────────────────────────────────────────────────────────────
+
+function DealsTable({ deals, loading }) {
+  const [search, setSearch]   = useState('');
+  const [minYoc, setMinYoc]   = useState(0);
+  const [minPop, setMinPop]   = useState('');
+  const [sort, setSort]       = useState({ col: 'deal_score', dir: 'desc' });
+  const [page, setPage]       = useState(1);
+  const PAGE_SIZE = 25;
+
+  const filtered = deals
+    .filter(d => {
+      if (search && !d.address?.toLowerCase().includes(search.toLowerCase())
+                 && !d.zip_code?.includes(search)) return false;
+      if (minYoc > 0 && (d.yield_on_cost || 0) * 100 < minYoc) return false;
+      if (minPop && (d.population_3mi || 0) < parseInt(minPop)) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const av = a[sort.col], bv = b[sort.col];
+      if (av === null || av === undefined) return 1;
+      if (bv === null || bv === undefined) return -1;
+      return sort.dir === 'asc' ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1);
+    });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const sortCol = col => {
+    setSort(s => ({ col, dir: s.col === col && s.dir === 'desc' ? 'asc' : 'desc' }));
+    setPage(1);
+  };
+  const arrow = col => sort.col === col ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : '';
+
+  const exportCSV = () => {
+    const cols = ['address','market','zip_code','asking_price','acres','price_per_acre',
+                  'avg_psf','population_3mi','pop_gate_passed','yield_on_cost','deal_score','processed_at'];
+    const header = cols.join(',');
+    const rows = filtered.map(d => cols.map(c => {
+      const v = d[c];
+      if (v === null || v === undefined) return '';
+      if (typeof v === 'string' && v.includes(',')) return `"${v}"`;
+      return v;
+    }).join(','));
+    const csv = [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'deals.csv'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="section-card">
+      <div className="section-header">
+        <div className="section-title">All Deals</div>
+        <span style={{fontSize:12,color:'#94a3b8'}}>{filtered.length} deal{filtered.length !== 1 ? 's' : ''}</span>
+      </div>
+      <div className="section-body">
+        <div className="table-controls">
+          <input className="search-input" placeholder="Search address or ZIP…"
+                 value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <span className="range-label">Min YoC: {minYoc}%</span>
+            <input type="range" className="range-input" min="0" max="30" step="0.5"
+                   value={minYoc} onChange={e => { setMinYoc(+e.target.value); setPage(1); }} />
+          </div>
+
+          <input className="search-input" style={{maxWidth:160}} placeholder="Min population…"
+                 value={minPop} onChange={e => { setMinPop(e.target.value); setPage(1); }} />
+
+          <button className="btn btn-outline btn-sm" onClick={exportCSV}>⬇ Export CSV</button>
+        </div>
+
+        {loading ? (
+          <div className="loading"><span className="spinner"/>Loading deals…</div>
+        ) : filtered.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon">📋</div>
+            <div>No deals match the current filters</div>
+          </div>
+        ) : (
+          <>
+            <div style={{overflowX:'auto'}}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    {[
+                      ['address','Address'],['market','State'],['zip_code','ZIP'],
+                      ['asking_price','Asking Price'],['acres','Acres'],['price_per_acre','$/Acre'],
+                      ['avg_psf','Avg PSF'],['population_3mi','Population'],
+                      ['yield_on_cost','YoC'],['deal_score','Score'],['processed_at','Date'],
+                    ].map(([col,label]) => (
+                      <th key={col} onClick={() => sortCol(col)}
+                          title={col === 'population_3mi' ? 'Sum of all ZIP populations within 3 miles of the property. S=subject ZIP, C=combo, N=neighbor.' : undefined}>
+                        {label}<span className="sort-arrow">{arrow(col)}</span>
+                      </th>
+                    ))}
+                    <th>Report</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginated.map(d => (
+                    <tr key={d.listing_id || d.id}>
+                      <td style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',
+                                  whiteSpace:'nowrap',fontWeight:500}} title={d.address}>{d.address||'—'}</td>
+                      <td>{d.market||'—'}</td>
+                      <td>{d.zip_code||'—'}</td>
+                      <td>{fmt(d.asking_price,'usd')}</td>
+                      <td>{d.acres ? d.acres.toFixed(1) : '—'}</td>
+                      <td>{fmt(d.price_per_acre,'usd')}</td>
+                      <td>{fmt(d.avg_psf,'psf')}</td>
+                      <td style={{whiteSpace:'nowrap'}}>
+                        {fmt(d.population_3mi,'num')}
+                        {popGateBadge(d.pop_gate_passed)}
+                      </td>
+                      <td style={{fontWeight:600}}>{fmt(d.yield_on_cost,'pct')}</td>
+                      <td>{scoreBadge(d.deal_score)}</td>
+                      <td style={{fontSize:11,color:'#94a3b8'}}>{d.processed_at?.split('T')[0]||'—'}</td>
+                      <td>
+                        {d.report_path && (
+                          <a href={`/api/report/${d.listing_id}`}
+                             className="btn btn-outline btn-sm" download title="Download report">📄</a>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="pagination">
+              <button className="page-btn" disabled={page === 1} onClick={() => setPage(p => p-1)}>← Prev</button>
+              <span className="page-info">Page {page} of {totalPages} ({filtered.length} deals)</span>
+              <button className="page-btn" disabled={page === totalPages} onClick={() => setPage(p => p+1)}>Next →</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Find Deals ────────────────────────────────────────────────────────────────
+
+function classifyLogLine(line) {
+  const l = line.toLowerCase();
+  if (l.includes('error') || l.includes('failed') || l.includes('traceback')) return 'err';
+  if (l.includes('warn') || l.includes('skip')) return 'warn';
+  if (l.startsWith('✓') || l.includes('done') || l.includes('ok') || l.includes('saved')) return 'info';
+  return '';
+}
+
+function parseProgress(line) {
+  // Matches "[3/12]" or "(3/12)"
+  const m = line.match(/[\[(](\d+)\s*\/\s*(\d+)[\])]/);
+  if (!m) return null;
+  const cur = +m[1], tot = +m[2];
+  if (!tot) return null;
+  return { pct: Math.round(cur / tot * 100), label: `${cur}/${tot}` };
+}
+
+function timeAgo(iso) {
+  if (!iso) return '';
+  const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60)    return `${s}s ago`;
+  if (s < 3600)  return `${Math.round(s/60)}m ago`;
+  if (s < 86400) return `${Math.round(s/3600)}h ago`;
+  return `${Math.round(s/86400)}d ago`;
+}
+
+function fmtDuration(startIso, endIso) {
+  if (!startIso) return '—';
+  const start = new Date(startIso).getTime();
+  const end   = endIso ? new Date(endIso).getTime() : Date.now();
+  const s = Math.max(0, Math.round((end - start) / 1000));
+  const mm = Math.floor(s / 60), ss = s % 60;
+  return `${mm}:${ss.toString().padStart(2, '0')}`;
+}
+
+function FindDealsView({ subView, refreshDeals, setFilters, setActiveNav }) {
+  const [markets,  setMarkets]  = useState([]);
+  const [counters, setCounters] = useState({});
+  const [form, setForm]         = useState({ market: 'Washington', maxDeals: 3, dryRun: false });
+  const [active,   setActive]   = useState([]);
+  const [history,  setHistory]  = useState([]);
+  const [liveLog,  setLiveLog]  = useState([]);   // lines for the currently-watched job
+  const [liveJob,  setLiveJob]  = useState(null); // the job_id whose stream is open
+  const [banner,   setBanner]   = useState(null); // {market, deals_found, dateRange?}
+  const esRef  = useRef(null);
+  const logRef = useRef(null);
+
+  // Markets + counters on mount
+  useEffect(() => {
+    fetch('/api/watcher/markets')
+      .then(r => r.json())
+      .then(d => { setMarkets(d.markets || []); setCounters(d.counters || {}); })
+      .catch(() => {});
+  }, []);
+
+  // Poll active jobs + history
+  const refreshJobs = useCallback(() => {
+    fetch('/api/watcher/active').then(r => r.json()).then(setActive).catch(() => {});
+    fetch('/api/watcher/history?limit=50').then(r => r.json()).then(setHistory).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refreshJobs();
+    const id = setInterval(refreshJobs, 3000);
+    return () => clearInterval(id);
+  }, [refreshJobs]);
+
+  // Auto-scroll log on new lines
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [liveLog]);
+
+  // Auto-watch the newest running job (or last-finished) so the log pane isn't empty
+  useEffect(() => {
+    if (liveJob) return;
+    const running = active.find(j => j.status === 'running');
+    if (running) openStream(running.job_id);
+  }, [active, liveJob]);
+
+  function openStream(jobId) {
+    if (esRef.current) { esRef.current.close(); esRef.current = null; }
+    setLiveJob(jobId);
+    setLiveLog([]);
+    const es = new EventSource(`/api/watcher/stream/${jobId}`);
+    esRef.current = es;
+    es.onmessage = (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        if (d._done) {
+          es.close();
+          esRef.current = null;
+          refreshJobs();
+          const job = active.find(j => j.job_id === jobId);
+          setBanner({
+            market:      job?.market || form.market,
+            deals_found: d.deals_found || 0,
+            status:      d.status,
+          });
+          refreshDeals();
+        } else if (d.line !== undefined) {
+          setLiveLog(prev => [...prev.slice(-499), d.line]);
+        }
+      } catch (e) {}
+    };
+    es.onerror = () => { /* let SSE auto-reconnect */ };
+  }
+
+  useEffect(() => () => { if (esRef.current) esRef.current.close(); }, []);
+
+  async function submitRun() {
+    setBanner(null);
+    try {
+      const r = await fetch('/api/watcher/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          market:    form.market,
+          max_deals: +form.maxDeals,
+          dry_run:   !!form.dryRun,
+        }),
+      });
+      const data = await r.json();
+      if (data.job_id) {
+        openStream(data.job_id);
+        refreshJobs();
+      } else if (data.error) {
+        alert('Failed to start: ' + data.error);
+      }
+    } catch (e) { alert('Network error: ' + e.message); }
+  }
+
+  async function stopJob(jobId) {
+    await fetch(`/api/watcher/stop/${jobId}`, { method: 'POST' });
+    refreshJobs();
+  }
+
+  function setAllPending() {
+    const n = counters[form.market]?.pending || 0;
+    setForm(f => ({ ...f, maxDeals: n }));
+  }
+
+  const runningJobs = active.filter(j => j.status === 'running');
+  const watchedJob  = active.find(j => j.job_id === liveJob);
+
+  // ── Sub-views ────────────────────────────────────────────────
+  const showNew     = subView === 'find-new';
+  const showActive  = subView === 'find-active';
+  const showHistory = subView === 'find-history';
+
+  return (
+    <div>
+      {banner && (
+        <div className="fd-banner">
+          <div className="fd-banner-text">
+            {banner.status === 'stopped'
+              ? `Run stopped for ${banner.market} — ${banner.deals_found} deal${banner.deals_found === 1 ? '' : 's'} added.`
+              : banner.status === 'error'
+              ? `Run finished with errors for ${banner.market} — ${banner.deals_found} deal${banner.deals_found === 1 ? '' : 's'} added.`
+              : `✓ Found ${banner.deals_found} new deal${banner.deals_found === 1 ? '' : 's'} in ${banner.market}.`}
+          </div>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            {banner.deals_found > 0 && (
+              <button className="btn btn-primary btn-sm" onClick={() => {
+                setFilters(f => ({...f, state: banner.market, dateRange: '30d'}));
+                setActiveNav('dashboard');
+                setBanner(null);
+              }}>View {banner.deals_found} →</button>
+            )}
+            <button className="fd-banner-close" onClick={() => setBanner(null)}>×</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── New Search ────────────────────────────────────── */}
+      {showNew && (
+        <div className="section-card">
+          <div className="section-header">
+            <div className="section-title">New Search</div>
+            <div style={{fontSize:12,color:'#94a3b8'}}>
+              Scrape Crexi for new land listings and run the analysis pipeline
+            </div>
+          </div>
+          <div className="section-body">
+            <div className="fd-grid">
+              <div className="fd-field" style={{gridColumn:'span 4'}}>
+                <label className="fd-label">State / Market</label>
+                <select className="fd-select" value={form.market}
+                        onChange={e => setForm(f => ({...f, market: e.target.value}))}>
+                  {markets.map(m => {
+                    const c = counters[m] || {};
+                    return (
+                      <option key={m} value={m}>
+                        {m}{c.pending ? ` — ${c.pending} pending` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div className="fd-field" style={{gridColumn:'span 3'}}>
+                <label className="fd-label">Max Deals</label>
+                <div style={{display:'flex',gap:6}}>
+                  <input type="number" min="0" className="fd-input" style={{flex:1}}
+                         value={form.maxDeals}
+                         onChange={e => setForm(f => ({...f, maxDeals: e.target.value}))} />
+                  <button className="btn btn-outline btn-sm" type="button" onClick={setAllPending}>
+                    All Pending
+                  </button>
+                </div>
+              </div>
+
+              <div className="fd-field" style={{gridColumn:'span 3',justifyContent:'flex-end'}}>
+                <label className="fd-check">
+                  <input type="checkbox" checked={form.dryRun}
+                         onChange={e => setForm(f => ({...f, dryRun: e.target.checked}))} />
+                  Dry Run (scrape only, skip pipeline)
+                </label>
+              </div>
+
+              <div className="fd-field" style={{gridColumn:'span 2',justifyContent:'flex-end'}}>
+                <div style={{display:'flex',gap:6}}>
+                  <button className="btn btn-primary" style={{flex:1}} onClick={submitRun}
+                          disabled={!form.market}>
+                    ▶ Run
+                  </button>
+                  <button className="btn btn-danger"
+                          disabled={runningJobs.length === 0}
+                          onClick={() => runningJobs.forEach(j => stopJob(j.job_id))}
+                          title={runningJobs.length === 0
+                            ? 'No runs in progress'
+                            : `Stop ${runningJobs.length} running job${runningJobs.length === 1 ? '' : 's'}`}>
+                    ⏹ Stop
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div style={{fontSize:11,color:'#94a3b8',marginTop:10}}>
+              Counters for <strong style={{color:'#475569'}}>{form.market}</strong>:
+              {' '}{counters[form.market]?.total || 0} total
+              {' · '}{counters[form.market]?.processed || 0} processed
+              {' · '}{counters[form.market]?.pending || 0} pending
+              {' · '}{counters[form.market]?.skipped || 0} skipped
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Active Runs + Log (shown on New Search AND Active Runs) ─────── */}
+      {(showNew || showActive) && (
+        <div className="section-card">
+          <div className="section-header">
+            <div className="section-title">
+              {runningJobs.length > 0
+                ? `Active Runs (${runningJobs.length})`
+                : 'Active Runs'}
+            </div>
+            <div style={{fontSize:12,color:'#94a3b8'}}>
+              {runningJobs.length === 0 && 'No runs in progress'}
+            </div>
+          </div>
+          <div className="section-body">
+            {active.length === 0 ? (
+              <div className="empty-state" style={{padding:20,fontSize:13}}>
+                No runs yet — start one above.
+              </div>
+            ) : (
+              active.slice(0, 5).map(job => {
+                const tailLine = job.log_tail?.[job.log_tail.length - 1] || '';
+                const prog = parseProgress(tailLine);
+                const isSelected = job.job_id === liveJob;
+                return (
+                  <div key={job.job_id} className="fd-run"
+                       style={isSelected ? {borderColor:'#86efac',background:'#f0fdf4'} : {}}>
+                    <div className="fd-run-head">
+                      <div>
+                        <span className={`fd-status-dot ${job.status}`}></span>
+                        <span className="fd-run-title">{job.market}</span>
+                        <span className="fd-run-meta" style={{marginLeft:10}}>
+                          max {job.max_deals}{job.dry_run ? ' · dry run' : ''}
+                          {' · '}{fmtDuration(job.started_at, job.finished_at)}
+                        </span>
+                      </div>
+                      <div style={{display:'flex',gap:6}}>
+                        {job.status === 'running' ? (
+                          <>
+                            {!isSelected && (
+                              <button className="btn btn-outline btn-sm"
+                                      onClick={() => openStream(job.job_id)}>Watch</button>
+                            )}
+                            <button className="btn btn-danger btn-sm"
+                                    onClick={() => stopJob(job.job_id)}>⏹ Stop</button>
+                          </>
+                        ) : (
+                          <span className={`fd-tag ${job.status}`}>{job.status}</span>
+                        )}
+                      </div>
+                    </div>
+                    {prog && job.status === 'running' && (
+                      <div className="fd-progress-wrap">
+                        <div className="fd-progress-bar" style={{width: `${prog.pct}%`}}></div>
+                      </div>
+                    )}
+                    {tailLine && (
+                      <div className="fd-run-current">{tailLine}</div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+
+            {/* Log pane for the watched job */}
+            {liveJob && (
+              <div style={{marginTop:14}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                  <div style={{fontSize:12,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:.5}}>
+                    Live Log — {watchedJob?.market || ''}
+                  </div>
+                  <button className="btn-link" onClick={() => setLiveLog([])}>Clear</button>
+                </div>
+                <div ref={logRef} className="fd-log">
+                  {liveLog.length === 0
+                    ? <div className="fd-log-empty">Waiting for output…</div>
+                    : liveLog.map((line, i) => (
+                        <div key={i} className={`fd-log-line ${classifyLogLine(line)}`}>{line}</div>
+                      ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Run History ────────────────────────────────────── */}
+      {(showNew || showHistory) && (
+        <div className="section-card">
+          <div className="section-header">
+            <div className="section-title">Run History</div>
+            <div style={{fontSize:12,color:'#94a3b8'}}>
+              {history.length} run{history.length === 1 ? '' : 's'}
+            </div>
+          </div>
+          <div className="section-body" style={{paddingTop:0}}>
+            {history.length === 0 ? (
+              <div className="empty-state" style={{padding:20,fontSize:13}}>No runs recorded yet.</div>
+            ) : (
+              <table className="fd-history">
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>Market</th>
+                    <th>Max</th>
+                    <th>Mode</th>
+                    <th>Status</th>
+                    <th>Duration</th>
+                    <th>Deals Found</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.slice(0, showHistory ? 50 : 10).map(r => (
+                    <tr key={r.job_id}>
+                      <td>{timeAgo(r.started_at)}</td>
+                      <td style={{fontWeight:600}}>{r.market}</td>
+                      <td>{r.max_deals}</td>
+                      <td>{r.dry_run ? 'dry-run' : 'full'}</td>
+                      <td><span className={`fd-tag ${r.status}`}>{r.status}</span></td>
+                      <td>{fmtDuration(r.started_at, r.finished_at)}</td>
+                      <td style={{fontWeight:600,color: r.deals_found > 0 ? '#1a7a4a' : '#94a3b8'}}>
+                        {r.deals_found || 0}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── App Root ──────────────────────────────────────────────────────────────────
+
+function App() {
+  const [filters, setFilters] = useState({
+    state: 'all', unitSize: '', unitType: '', minYoc: '', dateRange: 'all'
+  });
+  const [activeNav, setActiveNav] = useState('dashboard');
+  const [states,    setStates]    = useState([]);
+  const [overview,  setOverview]  = useState(null);
+  const [deals,     setDeals]     = useState([]);
+  const [dealsLoading, setDealsLoading] = useState(false);
+  const [openZip,   setOpenZip]   = useState(null);
+  const [openZipState, setOpenZipState] = useState('');
+
+  // Fetch states (for sidebar)
+  useEffect(() => {
+    fetch('/api/states').then(r => r.json()).then(setStates).catch(() => {});
+  }, []);
+
+  // Fetch overview
+  useEffect(() => {
+    const p = new URLSearchParams({ date_range: filters.dateRange });
+    if (filters.state !== 'all') p.set('state', filters.state);
+    fetch(`/api/overview?${p}`).then(r => r.json()).then(setOverview).catch(() => {});
+  }, [filters.state, filters.dateRange]);
+
+  // Fetch deals
+  useEffect(() => {
+    setDealsLoading(true);
+    const p = new URLSearchParams({ date_range: filters.dateRange, sort_by: 'deal_score' });
+    if (filters.state !== 'all')  p.set('state', filters.state);
+    if (filters.unitSize)         p.set('unit_size', filters.unitSize);
+    if (filters.unitType)         p.set('unit_type', filters.unitType);
+    if (filters.minYoc)           p.set('min_yoc', filters.minYoc);
+    fetch(`/api/deals?${p}`)
+      .then(r => r.json())
+      .then(d => { setDeals(d); setDealsLoading(false); })
+      .catch(() => setDealsLoading(false));
+  }, [filters]);
+
+  const handleZipClick = (zip, state) => {
+    setOpenZip(zip);
+    setOpenZipState(state);
+  };
+
+  return (
+    <div className="app-shell">
+      {/* Header */}
+      <div className="top-header">
+        <div className="logo">
+          <div className="logo-icon">SI</div>
+          <div>
+            <div className="logo-text">Storage Intel</div>
+            <div className="logo-sub">Self-Storage Deal Analyzer</div>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:16,alignItems:'center'}}>
+          <span style={{fontSize:12,color:'#94a3b8'}}>
+            {deals.length} deals loaded
+          </span>
+        </div>
+      </div>
+
+      <div className="body-row">
+        {/* Sidebar */}
+        <Sidebar
+          filters={filters}
+          setFilters={setFilters}
+          states={states}
+          activeNav={activeNav}
+          setActiveNav={setActiveNav}
+        />
+
+        {/* Main */}
+        <div className="main-content">
+          {activeNav?.startsWith('find-') ? (
+            <div className="content-area">
+              <FindDealsView
+                subView={activeNav}
+                refreshDeals={() => {
+                  // Re-fetch overview + deals with current filters
+                  const p = new URLSearchParams({ date_range: filters.dateRange });
+                  if (filters.state !== 'all') p.set('state', filters.state);
+                  fetch(`/api/overview?${p}`).then(r => r.json()).then(setOverview).catch(() => {});
+                  const p2 = new URLSearchParams({ date_range: filters.dateRange, sort_by: 'deal_score' });
+                  if (filters.state !== 'all')  p2.set('state', filters.state);
+                  if (filters.unitSize)         p2.set('unit_size', filters.unitSize);
+                  if (filters.unitType)         p2.set('unit_type', filters.unitType);
+                  if (filters.minYoc)           p2.set('min_yoc', filters.minYoc);
+                  fetch(`/api/deals?${p2}`).then(r => r.json()).then(setDeals).catch(() => {});
+                  fetch('/api/states').then(r => r.json()).then(setStates).catch(() => {});
+                }}
+                setFilters={setFilters}
+                setActiveNav={setActiveNav}
+              />
+            </div>
+          ) : (
+          <>
+          <FilterBar filters={filters} setFilters={setFilters} states={states} />
+
+          <div className="content-area">
+            {/* Section 1: Metric Cards */}
+            <MetricCards overview={overview} />
+
+            {/* Section 2: Charts */}
+            <div className="charts-row">
+              <LineChartCard
+                title="Average Rent per Square Foot"
+                metric="psf"
+                color="#1a7a4a"
+                filters={filters}
+                extraControls={(lf, setLf) => (
+                  <>
+                    <select className="chart-select" value={lf.unit_size||''}
+                            onChange={e => setLf(f=>({...f,unit_size:e.target.value}))}>
+                      {UNIT_SIZES.map(s => <option key={s} value={s==='All'?'':s}>{s}</option>)}
+                    </select>
+                    <select className="chart-select" value={lf.unit_type||''}
+                            onChange={e => setLf(f=>({...f,unit_type:e.target.value}))}>
+                      <option value="">All Types</option>
+                      <option value="drive_up">Drive-Up</option>
+                      <option value="climate_control">Climate</option>
+                    </select>
+                  </>
+                )}
+              />
+              <LineChartCard
+                title="Average Land Price per Acre"
+                metric="price_per_acre"
+                color="#3b82f6"
+                filters={filters}
+              />
+              <DealsBarChart filters={filters} />
+            </div>
+
+            {/* Section 3: Market Comparison / ZIP Table */}
+            <MarketComparison
+              filters={filters}
+              overview={overview}
+              deals={deals}
+              onZipClick={handleZipClick}
+            />
+
+            {/* Section 4: ZIP Drill-Down */}
+            {openZip && (
+              <ZipDrillDown
+                zip={openZip}
+                onClose={() => setOpenZip(null)}
+              />
+            )}
+
+            {/* Section 5: Deals Table */}
+            <DealsTable deals={deals} loading={dealsLoading} />
+          </div>
+          </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

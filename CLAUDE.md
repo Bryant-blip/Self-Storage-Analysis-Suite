@@ -1,45 +1,26 @@
 # Storage Tools — Self Storage Analysis Suite
 
 ## Project Overview
-A two-tool self-storage analysis platform with both a **desktop app** (tkinter) and a **web app** (FastAPI). The suite helps self-storage developers and investors analyze markets and estimate construction costs.
+A self-storage analysis platform with both a **desktop app** (tkinter) and a **web app** (FastAPI).
 
 ### Tools
-1. **Market Comps** — AI-powered rent comp analysis. Given a location and radius, an AI agent searches the web for nearby self-storage facilities, collects pricing data, and outputs a formatted Excel spreadsheet.
-2. **Cost Estimator** — Construction cost estimation for new self-storage facilities. Supports both Quick Estimate (instant, no API call) and Accurate Estimate (AI agent researches local costs). Covers Drive-Up and Climate Controlled building types with itemized hard costs, soft costs (~22.5%), and USACE location adjustment factors.
+1. **Market Comps** — Automated rent comp analysis. Given a location and radius, the pipeline discovers nearby self-storage facilities via Google Places, scrapes each facility's own website using Firecrawl, extracts structured pricing with Claude Haiku, and outputs a formatted 3-tab Excel report.
 
 ---
 
 ## Standards & Principles
 
 ### Security — Non-Negotiable
-This platform handles user credentials and third-party API keys. Every decision must prioritize data protection.
-
-- **Zero plaintext secrets.** API keys are encrypted at rest using Fernet (AES-128) with PBKDF2HMAC key derivation (100k iterations). Passwords are hashed with bcrypt. No exceptions.
-- **No hardcoded credentials.** All secrets live in `.env` files that are `.gitignore`-protected. The app refuses to start without a properly configured `JWT_SECRET`.
-- **BYOK model.** The server never stores or exposes its own API key. Each user provides and owns their own Anthropic key. This limits blast radius — a compromised account exposes only that user's key, not a shared resource.
-- **Auth on every endpoint.** All data-access and agent endpoints require a valid JWT. File downloads authenticate via query-param token since browser downloads can't send headers.
-- **Admin isolation.** Admin endpoints are gated by email whitelist (`ADMIN_EMAIL`). Admin can view users and disable accounts but cannot access user API keys.
-- **Rate limiting.** Per-user daily caps prevent abuse and runaway API spend (default 50/day, configurable).
-- **Never commit `.env`, `*.db`, or generated files.** The `.gitignore` enforces this at the repo level.
+- **Zero plaintext secrets.** API keys in `.env` files only. No exceptions.
+- **No hardcoded credentials.** All secrets live in `.env` files that are `.gitignore`-protected.
+- **Never commit `.env`, `*.db`, or generated files.**
 
 ### Functionality — Accuracy Over Speed
-The tools exist to support real investment decisions. Output must be reliable enough to present in a deal memo.
-
-- **No fabricated data.** Market comps only include pricing sourced from the web. If a rate can't be found, leave the cell blank — never guess.
-- **Distance is mandatory.** Every facility must have a verified distance from the subject property. No facility is included without it.
-- **Itemized cost breakdowns.** The cost estimator provides line-by-line hard costs and 9 itemized soft cost categories (~22.5%) — not a single opaque percentage. Every dollar is traceable.
-- **Location-adjusted.** Construction costs are adjusted using USACE Area Cost Factors specific to each metro, not national averages.
-- **Real-time feedback.** Agent operations stream output via SSE so users see progress, not a blank screen and a spinner.
-
+- **No fabricated data.** Market comps only include pricing sourced directly from each facility's website. If a rate can't be found, leave the cell blank — never guess.
+- **Distance is mandatory.** Every facility must have a verified Haversine distance from the subject property. Hard radius enforcement — Google Places radius is a hint, not a guarantee.
 ### Professionalism — Institutional Quality
-This is built to the standard of a tool used by a New York private equity firm's acquisitions team.
-
-- **Clean, consistent UI.** Dark theme with precise spacing, no clutter. Every element earns its place on screen.
-- **Structured output.** Excel reports include formatted headers, auto-sized columns, conditional formatting, and a side-by-side Drive-Up / Climate Controlled layout (Market Comps, Facility List tabs). Ready for deal books and IC presentations.
-- **Error handling with grace.** Users see clear, actionable error messages — never raw stack traces or cryptic codes.
-- **Audit trail.** Every search is logged with user, action type, location, and timestamp. Usage is queryable by admins.
-- **Production-ready architecture.** SQLAlchemy ORM with SQLite for development and PostgreSQL for production. JWT auth, rate limiting, admin controls, and encrypted storage — not bolted on later, built in from the start.
-- **No personal data leakage.** No emails, API keys, usernames, or local file paths in committed code. All user-specific values live in `.env` or the database.
+- **Structured output.** Excel reports match the proforma template exactly — loaded directly from `claude excel model template.xlsx`.
+- **Error handling with grace.** Users see clear, actionable error messages — never raw stack traces.
 
 ---
 
@@ -47,161 +28,113 @@ This is built to the standard of a tool used by a New York private equity firm's
 
 ### Desktop App (`storage_comps_app.py`)
 - **Framework:** tkinter with dark theme (#0d1117 background)
-- **Tabs:** Market Comps, Cost Estimator
-- **AI Backend:** Claude Agent SDK (`query()`, `ClaudeAgentOptions`)
+- **Tabs:** Market Comps
+- **Backend:** `comps_pipeline.py` — direct API pipeline (no Agent SDK)
 - **Output:** Excel files via `openpyxl` saved to `output/`
-- **Launch:** `Launch Storage Comps App.bat` or `python storage_comps_app.py`
+- **Launch:** `Launch Storage Comps App.bat` (uses `pythonw3.11.exe`)
+- **API keys:** GOOGLE_PLACES_API_KEY, FIRECRAWL_API_KEY, ANTHROPIC_API_KEY (from `.env`)
+- **Auto-install:** `_ensure_deps()` bootstrap installs missing packages on launch
 
 ### Web App (`web/`)
 - **Framework:** FastAPI + Jinja2 templates
-- **Auth:** JWT tokens (python-jose) + bcrypt password hashing (passlib)
+- **Auth:** JWT tokens + bcrypt password hashing
 - **Database:** SQLAlchemy — SQLite locally, PostgreSQL in production
-- **API Key Model:** BYOK (Bring Your Own Key) — each user provides their own Anthropic API key at signup
-- **API Key Security:** Fernet encryption (AES-128) with PBKDF2HMAC key derivation from JWT_SECRET
+- **API Key Model:** BYOK — each user provides their own Anthropic API key
 - **Streaming:** Server-Sent Events (SSE) for real-time agent output
-- **Rate Limiting:** Configurable daily search limit per user (default 50/day)
-- **Admin:** ADMIN_EMAIL env var controls admin access; admin can view all users and toggle accounts
 - **Launch:** `python -m uvicorn app:app --host 127.0.0.1 --port 5000`
 
-### CLI Agent (`storage_comps_agent.py`)
-- Standalone CLI script for running market comps via terminal
+---
 
-### Fact-Check Agent (`fact_check_agent.py`)
-- Aggressive, skeptical price auditor for comps Excel files
-- Reads all data from every tab, verifies each facility's prices against live websites/aggregators, and recalculates all Market Summary math
-- Outputs a 4-tab Excel audit report: Price Verification (row-by-row status), Math Verification (recalculated Avg/Min/Max/Count), Analysis Notes (harsh written critique with sections: Price Accuracy Assessment, Suspicious Pricing, Math Errors, Data Gaps, Bottom Line), Summary (accuracy stats and X/10 score)
-- Exact dollar match required for "Verified" ($129.00 = $129); any difference is "Mismatch" with +$X/-$X shown
-- Searches once per facility, matches all unit types from that lookup; uses Sonnet with max_turns=50
-- Integrated into both desktop app (orange "Fact-Check" button after comps complete) and web app (`POST /api/fact-check` SSE stream)
+## Market Comps Pipeline (`comps_pipeline.py`)
 
-## Cost Data
+### Workflow
+1. **Geocode** subject location (Google Geocoding API)
+2. **Discover** nearby facilities (Google Places Nearby Search → Text Search fallback)
+3. **Filter** — hard radius enforcement, exclude PODS/moving companies
+4. **Per facility** (ThreadPoolExecutor, max 5 workers):
+   - Get address, phone, website (Google Place Details)
+   - Scrape website directly with Firecrawl (handles JS + Cloudflare)
+   - Extract structured pricing with Claude Haiku (`claude-haiku-4-5-20251001`)
+5. **Write** 3-tab Excel report
 
-### Hard Costs (per SF)
-- **Drive-Up:** Site Work, Concrete Slab, Steel Structure, Metal Roofing, Electrical, Paving + lump sums (Roll-Up Doors, Security System, Office Buildout)
-- **Climate Controlled:** All Drive-Up items + Insulation/Vapor Barrier, HVAC, Interior Partitions/Hallways, Elevator, Fire Suppression, Enhanced Electrical
+### Key Design Decisions
+- **Firecrawl over Tavily:** Switched because Tavily search returned area/market pages instead of per-facility pages. Firecrawl goes directly to each facility's own website URL (from Google Places) and handles Cloudflare on major chains.
+- **No website = no pricing:** If Google Places has no website URL for a facility, pricing is skipped. No fallback search.
+- **50k char limit to Claude:** Large chain pages (Extra Space ~57-59k chars) need this to capture pricing tables.
 
-### Soft Costs (~22.5% of hard costs, itemized)
-Architectural & Engineering (5%), Permits & Impact Fees (2.5%), Geotechnical/Environmental (0.8%), Survey & Land Planning (0.4%), Legal & Closing (0.8%), Builder's Risk Insurance (0.7%), Construction Loan Interest (4%), Property Taxes During Construction (0.8%), Contingency (7.5%)
+### Pricing Extraction Rules
+- **web_rate:** online/discounted price — "Web Rate", "Online Rate", "Online-Only Price", "eRate"
+- **in_store_rate:** regular/walk-in price — "Standard Price", "Street Rate", "Regular Price", crossed-out price
+- **Deduplication:** for each (size, type) keep lowest web_rate
+- **Type classification:** "climate_control" only if explicitly temperature-controlled language; "drive_up" for everything else including indoor/interior without temp language
 
-### Location Adjustment
-USACE Area Cost Factors applied to base costs per city (e.g., NYC 1.35, Austin 0.92, etc.)
+### Unit Sizes
+`5x5, 5x10, 10x10, 10x15, 10x20, 10x25, 10x30`
+- Empty size rows are skipped in Excel (no blank rows if no facility has that size)
 
-## Market Comps — Search Strategy
+---
 
-### Tiered Escalation (cheapest first)
-The agent uses a 4-tier strategy, escalating per-facility only when prior tiers fail:
+## Excel Output — 3 Tabs
 
-1. **Tier 1 — Search snippets (FREE):** Extract prices directly from search result snippets. No page fetches.
-2. **Tier 2 — Aggregator area page (1 fetch, many facilities):** Fetch a StorageUnits.com or SelfStorage.com area page that lists multiple facilities with prices on a single page.
-3. **Tier 3 — Firecrawl (JS rendering → Markdown):** For facilities still missing prices, use `firecrawl_scrape.py` to render their website server-side and return clean Markdown. Requires `FIRECRAWL_API_KEY` env var.
-4. **Tier 4 — Playwright (local headless browser, last resort):** If Firecrawl fails, use `scrape_prices.py` to launch a local headless Chromium browser and extract visible text.
+### Tab 1: Proforma
+- Loaded directly from `claude excel model template.xlsx` — all formatting comes from the file
+- Code fills: B3 (location), clears C5/C6/E6 to blank (user fills in Acres, Land Cost, Rent/sqft)
+- All formulas in G/H columns preserved and live
+- Sheet named "Initial look proforma" in template
 
-### Slashed / Strikethrough Prices
-Many facility websites show a crossed-out original price next to a discounted "Web Rate." The slashed price is the **in-store rate**; the discounted price is the **online rate**. Example: ~~$72~~ $36 → In-Store = $72, Online = $36.
+### Tab 2: Market Comps
+- LEFT: "Drive-Up / Standard Units" (orange #FCE4D6)
+- RIGHT: "Climate Controlled Units" (green #E2EFDA)
+- Each side: In-Store rates on top, Online (Discounted) rates below
+- Facilities as columns (closest first), unit sizes as rows
+- Averages summary section below grid: $/sqft per size for all 4 combinations
+- Blank cells for missing data (never "N/A")
 
-## Market Comps Output
+### Tab 3: Facility List
+- Name, address, distance (mi), drive time (min), phone, website (hyperlinked)
 
-### Excel Tabs (2-tab format)
-1. **Market Comps** — side-by-side comparison layout
-   - LEFT: "Drive-Up / Standard Units" (orange header #FCE4D6)
-   - RIGHT: "Climate Controlled Units" (green header #E2EFDA)
-   - Each side: In-Store rates on top, Online (Discounted) rates below, separated by a blank row
-   - Facilities as columns (closest first), unit sizes as rows (5x5 through 10x30)
-   - Blank cells for missing data (never "N/A")
-2. **Facility List** — one row per facility with address, distance, drive time, phone, website
+---
 
-### Target Unit Types
-5x5, 5x10, 10x10, 10x15, 10x20, 10x25, 10x30, Parking/Vehicle Storage
+## API Keys Required (Desktop)
 
-### Key Rules
-- Always collect both online and in-store rates; leave cell blank if not found
-- Distance from subject property is required for every facility
-- Sort all output by distance (closest first)
-- Do not fabricate pricing — only use data from web sources
-- Default radius: 5 miles (configurable)
-- Filename: `storage_comps_[location]_[date].xlsx`
-
-## Web App Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/register` | Create account (email, password, API key) |
-| POST | `/api/login` | Get JWT token |
-| POST | `/api/update-api-key` | Update stored API key |
-| GET | `/api/usage` | User's usage stats |
-| POST | `/api/quick-estimate` | Instant cost estimate (no API) |
-| POST | `/api/comps` | Market comps agent (SSE stream) |
-| POST | `/api/fact-check` | Fact-check audit agent (SSE stream) |
-| POST | `/api/accurate-estimate` | Accurate cost agent (SSE stream) |
-| GET | `/api/download/{file}` | Download Excel file (token auth via query param) |
-| GET | `/api/admin/users` | Admin: list all users and usage |
-| POST | `/api/admin/toggle-user/{id}` | Admin: enable/disable user |
-
-## Web App Config (`.env`)
+Set in `.env` file in the project root:
 ```
-JWT_SECRET=<random-string-for-signing-tokens>
-ADMIN_EMAIL=<admin-user-email>
-DAILY_SEARCH_LIMIT=50          # optional, default 50
-DATABASE_URL=sqlite:///./storage_tools.db  # or postgresql:// for production
-FIRECRAWL_API_KEY=<firecrawl-api-key>  # optional, enables Tier 3 scraping
+GOOGLE_PLACES_API_KEY=   # Places API + Geocoding API enabled in Google Cloud Console
+FIRECRAWL_API_KEY=       # firecrawl.dev — free tier 500 pages/month
+ANTHROPIC_API_KEY=       # console.anthropic.com
 ```
-Note: No server-side ANTHROPIC_API_KEY needed — users bring their own.
+
+---
 
 ## File Structure
 ```
 Real Estate Project/
-├── .gitignore                      # Blocks .env, *.db, __pycache__, generated files
-├── CLAUDE.md                       # This file
-├── storage_comps_app.py            # Desktop app (tkinter, ~1300 lines)
-├── storage_comps_agent.py          # CLI agent script
-├── fact_check_agent.py             # Fact-check & audit CLI agent
-├── firecrawl_scrape.py             # Firecrawl API scraper (Tier 3 — JS → Markdown)
-├── scrape_prices.py                # Playwright headless browser scraper (Tier 4 — fallback)
-├── build_comps.py                  # Build helper
-├── requirements.txt                # Desktop dependencies
-├── Launch Storage Comps App.bat    # Desktop shortcut
-├── Install Desktop Shortcut.bat    # Creates desktop shortcut
-├── output/                         # Generated Excel files
-│   └── gen_comps.py
-└── web/                            # Web application
-    ├── app.py                      # FastAPI backend (~600 lines)
-    ├── database.py                 # SQLAlchemy models (User, UsageLog)
-    ├── requirements.txt            # Web dependencies
-    ├── start.bat                   # Windows launcher (loads .env)
-    ├── .env                        # Environment config (NEVER committed)
-    ├── .env.example                # Template for .env
-    ├── static/                     # Static assets
-    └── templates/
-        ├── login.html              # Login/signup page
-        └── index.html              # Main dashboard
+├── CLAUDE.md                           # This file
+├── .env                                # API keys (never commit)
+├── .env.example                        # Template for .env
+├── comps_pipeline.py                   # Core pipeline — geocode → scrape → extract → Excel
+├── storage_comps_app.py                # Desktop app (tkinter)
+├── storage_comps_agent.py              # CLI agent script
+├── firecrawl_scrape.py                 # Standalone Firecrawl scraper (reference)
+├── test_pipeline.py                    # Single-facility debug script
+├── claude excel model template.xlsx    # Proforma template — drives Tab 1 formatting
+├── requirements.txt                    # Desktop dependencies
+├── Launch Storage Comps App.bat        # Desktop launcher (pythonw3.11.exe)
+└── output/                             # Generated Excel files
 ```
+
+---
 
 ## Tech Stack
-- **Language:** Python 3.11+
+- **Language:** Python 3.11
 - **Desktop UI:** tkinter + ttk
-- **Web Framework:** FastAPI + uvicorn
-- **AI:** Claude Agent SDK (`claude-agent-sdk`)
-- **Scraping:** Firecrawl (`firecrawl-py`) for JS→Markdown, Playwright for headless browser fallback
-- **Database:** SQLAlchemy (SQLite / PostgreSQL)
-- **Auth:** JWT (python-jose), bcrypt (passlib), Fernet encryption (cryptography)
-- **Excel:** openpyxl
-- **Geocoding:** geopy
-- **Templating:** Jinja2
+- **Competitor Discovery:** Google Places API (Nearby Search + Place Details + Geocoding)
+- **Website Scraping:** Firecrawl (`firecrawl-py`) — JS rendering + Cloudflare bypass
+- **Pricing Extraction:** Claude Haiku (`claude-haiku-4-5-20251001`) via direct Anthropic API
+- **Excel:** openpyxl — reads template, writes dynamic tabs
+- **Web Framework:** FastAPI + uvicorn (web app only)
 
-## Dependencies
-
-### Desktop
+## Desktop Dependencies
 ```
-pip install openpyxl geopy claude-agent-sdk anyio playwright firecrawl-py
-playwright install chromium
+firecrawl-py, anthropic, openpyxl, requests, geopy, python-dotenv
 ```
-
-### Web
-```
-pip install fastapi uvicorn[standard] jinja2 python-multipart python-jose[cryptography] passlib[bcrypt] sqlalchemy openpyxl claude-agent-sdk anyio geopy python-dotenv playwright firecrawl-py
-playwright install chromium
-```
-Note: Use `bcrypt==4.0.1` to avoid compatibility issues with passlib.
-
-### Environment Variables
-- `FIRECRAWL_API_KEY` — Required for Tier 3 scraping. Get a key at firecrawl.dev.

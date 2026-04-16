@@ -12,6 +12,8 @@ build/
 
 # Generated output
 output/*.xlsx
+reports/
+data/seen_deals.json
 
 # OS
 Thumbs.db

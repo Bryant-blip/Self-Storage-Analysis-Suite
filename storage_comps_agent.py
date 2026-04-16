@@ -115,7 +115,7 @@ from subject using Haversine formula, 25 mph estimate.
 
 Include only facilities within the search radius. Sort closest first.
 
-## Excel — 3 Tabs
+## Excel — 2 Tabs
 
 Tab 1 "Market Comps" — side-by-side comparison layout
   LEFT SIDE: "DRIVE-UP / STANDARD UNITS" header (bold, orange #FCE4D6)
@@ -144,51 +144,12 @@ Tab 2 "Facility List" — one row per facility
 Columns: Facility Name | Address | Distance (mi) | Drive Time (min) | Phone | Website
 Format: bold header (#FCE4D6), sorted by distance
 
-## Market Analysis — Population & Existing Supply
-
-After completing the comps tabs, gather market-level data:
-
-### Population (1-mile, 3-mile, 5-mile radius)
-1. WebSearch: "population within 1 3 5 mile radius of [location]"
-2. Also try: "[zip code] demographics population radius" or "[city] [state] population density"
-3. Look for Census data, demographic reports, or tools like Census Reporter.
-4. Record the population for each ring: 1-mile, 3-mile, and 5-mile.
-5. If you cannot find exact radius data, search for zip code population as a fallback.
-
-### Existing Supply (competitor square footage)
-For each facility found in the comps search:
-1. Search for published total square footage or net rentable SF.
-   Try: "[facility name] [city] total square feet" or "[facility name] net rentable"
-2. Check REIT investor pages (Extra Space, Public Storage, CubeSmart, Life Storage)
-   — they often list per-facility SF.
-3. Check county tax assessor / property records for the facility address.
-4. Check aggregator sites (SelfStorage.com, StorageCafe.com) which sometimes list facility size.
-5. **Do NOT estimate.** Only report confirmed, published square footage.
-6. Record the SOURCE where you found the SF (e.g., "Public Storage investor page",
-   "Travis County tax records", "StorageCafe.com").
-7. Leave blank if no published SF can be found.
-
-### Tab 3 "Market Analysis"
-Section 1: "POPULATION" header (bold, blue #D6E4F0)
-  Row: "1-Mile Radius" | [population] | [source]
-  Row: "3-Mile Radius" | [population] | [source]
-  Row: "5-Mile Radius" | [population] | [source]
-
-Blank row separator.
-
-Section 2: "EXISTING SUPPLY" header (bold, blue #D6E4F0)
-  Columns: Facility Name | Address | Distance (mi) | Total SF | Source
-  One row per facility (sorted by distance, same order as comps).
-  Leave Total SF blank if not found — do NOT estimate.
-
-  Final row: "TOTAL" | | | [sum of known SF] |
-  (Only sum facilities where SF was confirmed.)
-
 ## Rules
 - Never fabricate pricing. Leave the cell BLANK if no data — do NOT write "N/A".
 - Distance required — exclude facility if unknown.
 - Write Excel via openpyxl using the Bash tool.
 """
+
 
 
 # ── Agent runner ───────────────────────────────────────────────────────────────
@@ -210,7 +171,7 @@ Instructions:
    and SelfStorage.com — they return static HTML with actual prices).
 3. Collect ALL unit sizes (5x5, 5x10, 10x10, 10x15, 10x20, 10x25, 10x30).
 4. Calculate distance/drive time from "{location}" for each facility.
-5. Write the Excel file using openpyxl (3-tab format per system prompt).
+5. Write the Excel file using openpyxl (2-tab format per system prompt).
 6. Print a brief summary: facilities found, price ranges by unit size.
 
 No fabricated data — leave cells blank if no price found.
@@ -275,7 +236,6 @@ Examples:
         default=5.0,
         help="Search radius in miles (default: 5)",
     )
-
     args = parser.parse_args()
 
     # Interactive prompts if not provided via CLI
