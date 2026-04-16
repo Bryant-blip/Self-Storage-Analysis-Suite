@@ -54,6 +54,58 @@ UNIT_SF       = {"5x5": 25, "5x10": 50, "10x10": 100, "10x15": 150, "10x20": 200
 # Weights are normalized at runtime so missing sizes don't throw off the result.
 UNIT_MIX_WEIGHTS = {"5x5": 0.12, "5x10": 0.25, "10x10": 0.30, "10x15": 0.15,
                     "10x20": 0.12, "10x25": 0.00, "10x30": 0.06}
+
+# ── Facility-type constants ───────────────────────────────────────────────────
+# Lehi, UT reference: 1.6 acres → 115K gross / 85K rentable
+_MULTI_STORY_YIELD  = round(85_000 / (1.6 * 43_560), 4)  # ~1.2196 (122%)
+_SINGLE_STORY_YIELD = 0.40                                 # 40%
+_MIXED_TARGET_SQFT  = 90_000
+
+_MULTI_STORY_COST  = 95.0
+_SINGLE_STORY_COST = 50.0
+
+
+def classify_facility(acres: float | None) -> str:
+    if acres is None:
+        return "single_story"
+    if acres < 2.0:
+        return "multi_story"
+    if acres <= 4.0:
+        return "mixed"
+    return "single_story"
+
+
+def calc_facility_assumptions(facility_type: str, acres: float = None) -> dict:
+    if facility_type == "multi_story":
+        return {"yield_pct": _MULTI_STORY_YIELD, "cost_per_sqft": _MULTI_STORY_COST}
+
+    if facility_type == "mixed" and acres:
+        land_sqft = acres * 43_560
+        ms_frac = (_MIXED_TARGET_SQFT / land_sqft - _SINGLE_STORY_YIELD) \
+                  / (_MULTI_STORY_YIELD - _SINGLE_STORY_YIELD)
+        ms_frac = max(0.0, min(1.0, ms_frac))
+        ss_frac = 1.0 - ms_frac
+
+        ms_sqft = ms_frac * land_sqft * _MULTI_STORY_YIELD
+        ss_sqft = ss_frac * land_sqft * _SINGLE_STORY_YIELD
+        total_sqft = ms_sqft + ss_sqft
+        total_cost = ms_sqft * _MULTI_STORY_COST + ss_sqft * _SINGLE_STORY_COST
+
+        eff_yield = total_sqft / land_sqft
+        eff_cost = total_cost / total_sqft if total_sqft else _SINGLE_STORY_COST
+
+        return {
+            "yield_pct": round(eff_yield, 4),
+            "cost_per_sqft": round(eff_cost, 2),
+            "ms_frac": round(ms_frac, 4),
+            "ss_frac": round(ss_frac, 4),
+            "ms_sqft": round(ms_sqft),
+            "ss_sqft": round(ss_sqft),
+        }
+
+    return {"yield_pct": _SINGLE_STORY_YIELD, "cost_per_sqft": _SINGLE_STORY_COST}
+
+
 DRIVE_MPH     = 25.0
 TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              "claude excel model template.xlsx")
@@ -664,12 +716,54 @@ def _calc_weighted_driveup_rent_per_sqft(facilities: list) -> float | None:
     return round(weighted, 2)
 
 
+def _calc_weighted_cc_rent_per_sqft(facilities: list) -> float | None:
+    """Weighted average climate_control online (web_rate) $/sqft using UNIT_MIX_WEIGHTS."""
+    size_rates: dict[str, list[float]] = {s: [] for s in UNIT_SIZES}
+    for f in facilities:
+        for p in f.get("pricing", []):
+            if p.get("unit_type", p.get("type", "")) != "climate_control":
+                continue
+            size = p.get("size", "")
+            web  = p.get("web_rate")
+            sf   = UNIT_SF.get(size)
+            if web and sf and size in size_rates:
+                size_rates[size].append(web / sf)
+
+    size_avgs: list[tuple[float, float]] = []
+    for size, rates in size_rates.items():
+        if not rates:
+            continue
+        w = UNIT_MIX_WEIGHTS.get(size, 0.0)
+        if w > 0:
+            size_avgs.append((sum(rates) / len(rates), w))
+
+    if not size_avgs:
+        return None
+
+    total_w = sum(w for _, w in size_avgs)
+    weighted = sum(avg * (w / total_w) for avg, w in size_avgs)
+    return round(weighted, 2)
+
+
+def _calc_mixed_rent_per_sqft(facilities: list, ms_frac: float) -> float | None:
+    """Blended rent using the computed multi-story / single-story split."""
+    cc_rate = _calc_weighted_cc_rent_per_sqft(facilities)
+    du_rate = _calc_weighted_driveup_rent_per_sqft(facilities)
+
+    if cc_rate is not None and du_rate is not None:
+        return round(ms_frac * cc_rate + (1 - ms_frac) * du_rate, 2)
+    return cc_rate or du_rate
+
+
 def _load_proforma_from_template(
     location: str,
     acres: float = None,
     asking_price: float = None,
     crexi_url: str = "",
     rent_per_sqft: float = None,
+    yield_pct: float = None,
+    cost_per_sqft: float = None,
+    facility_type: str = None,
 ):
     """
     Load the Excel template and return a workbook with the proforma tab populated.
@@ -701,7 +795,14 @@ def _load_proforma_from_template(
     ws["B3"] = location or ""        # property location
     ws["C5"] = acres                 # Acres — auto-filled from Crexi if available
     ws["C6"] = asking_price          # Cost of Land — auto-filled from Crexi if available
-    ws["E6"] = rent_per_sqft          # Rent Per Sqft — weighted drive-up avg minus $0.05 discount
+    ws["E6"] = rent_per_sqft          # Rent Per Sqft — weighted avg minus $0.05 discount
+    if yield_pct is not None:
+        ws["E5"] = yield_pct
+    if cost_per_sqft is not None:
+        ws["E10"] = cost_per_sqft
+    if facility_type:
+        ws["D3"] = "Facility Type"
+        ws["E3"] = facility_type
 
     # Crexi listing link — written to C2 (label "Crexi Link" is in B2)
     if crexi_url:
@@ -713,17 +814,78 @@ def _load_proforma_from_template(
     return wb
 
 
+def _write_mixed_breakdown(ws, assumptions: dict) -> None:
+    """Write the multi-story / single-story split breakdown below the proforma."""
+    from openpyxl.styles import Font
+
+    bold = Font(bold=True)
+    ms_frac = assumptions["ms_frac"]
+    ss_frac = assumptions["ss_frac"]
+    ms_sqft = assumptions["ms_sqft"]
+    ss_sqft = assumptions["ss_sqft"]
+    ms_cost = ms_sqft * _MULTI_STORY_COST
+    ss_cost = ss_sqft * _SINGLE_STORY_COST
+
+    r = 36
+    ws.cell(row=r, column=7, value="Mixed Facility Breakdown").font = bold
+    r += 1
+    ws.cell(row=r, column=7, value="Land Split")
+    ws.cell(row=r, column=8, value=f"{ms_frac:.0%} multi-story / {ss_frac:.0%} single-story")
+    r += 1
+    ws.cell(row=r, column=7, value="Multi-Story CC")
+    ws.cell(row=r, column=8, value=ms_sqft)
+    ws.cell(row=r, column=8).number_format = "#,##0"
+    ws.cell(row=r, column=9, value=f"sqft @ ${_MULTI_STORY_COST:.0f}/sqft")
+    ws.cell(row=r, column=10, value=ms_cost)
+    ws.cell(row=r, column=10).number_format = "$#,##0"
+    r += 1
+    ws.cell(row=r, column=7, value="Single-Story DU")
+    ws.cell(row=r, column=8, value=ss_sqft)
+    ws.cell(row=r, column=8).number_format = "#,##0"
+    ws.cell(row=r, column=9, value=f"sqft @ ${_SINGLE_STORY_COST:.0f}/sqft")
+    ws.cell(row=r, column=10, value=ss_cost)
+    ws.cell(row=r, column=10).number_format = "$#,##0"
+    r += 1
+    ws.cell(row=r, column=7, value="Total Rentable").font = bold
+    ws.cell(row=r, column=8, value=ms_sqft + ss_sqft).font = bold
+    ws.cell(row=r, column=8).number_format = "#,##0"
+    r += 1
+    ws.cell(row=r, column=7, value="Total Construction").font = bold
+    ws.cell(row=r, column=10, value=ms_cost + ss_cost).font = bold
+    ws.cell(row=r, column=10).number_format = "$#,##0"
+
+
 def write_comps_excel(facilities: list, output_path: str, location: str = "",
                       acres: float = None, asking_price: float = None,
                       crexi_url: str = "") -> None:
     """Write the 3-tab comps Excel file to output_path."""
     # ── Tab 1: Proforma — loaded from template ─────────────────────────────────
-    # E6: weighted drive-up online $/sqft minus $0.05 new-competitor discount
-    weighted_rate = _calc_weighted_driveup_rent_per_sqft(facilities)
-    rent_per_sqft = round(weighted_rate - 0.05, 2) if weighted_rate is not None else None
+    facility_type = classify_facility(acres)
+    assumptions = calc_facility_assumptions(facility_type, acres=acres)
+
+    if facility_type == "multi_story":
+        raw_rate = _calc_weighted_cc_rent_per_sqft(facilities)
+    elif facility_type == "mixed":
+        ms_frac = assumptions.get("ms_frac", 0.5)
+        raw_rate = _calc_mixed_rent_per_sqft(facilities, ms_frac)
+    else:
+        raw_rate = _calc_weighted_driveup_rent_per_sqft(facilities)
+
+    if raw_rate is None:
+        raw_rate = _calc_weighted_driveup_rent_per_sqft(facilities)
+
+    rent_per_sqft = round(raw_rate - 0.05, 2) if raw_rate is not None else None
     wb = _load_proforma_from_template(location, acres=acres,
                                       asking_price=asking_price, crexi_url=crexi_url,
-                                      rent_per_sqft=rent_per_sqft)
+                                      rent_per_sqft=rent_per_sqft,
+                                      yield_pct=assumptions["yield_pct"],
+                                      cost_per_sqft=assumptions["cost_per_sqft"],
+                                      facility_type=facility_type)
+
+    # For mixed: write breakdown rows showing the land split
+    if facility_type == "mixed" and "ms_frac" in assumptions:
+        proforma_ws = wb["Proforma"]
+        _write_mixed_breakdown(proforma_ws, assumptions)
 
     # Remove any existing Market Comps / Facility List sheets from the template
     for name in ["Market Comps", "Facility List"]:
