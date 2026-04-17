@@ -109,6 +109,8 @@ def calc_facility_assumptions(facility_type: str, acres: float = None) -> dict:
 DRIVE_MPH     = 25.0
 TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              "claude excel model template.xlsx")
+MIXED_TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "mixed_proforma_template.xlsx")
 ORANGE_HEX = "FCE4D6"
 GREEN_HEX  = "E2EFDA"
 
@@ -682,22 +684,21 @@ def _calc_avg_rent_per_sqft(facilities: list):
 
 def _calc_weighted_driveup_rent_per_sqft(facilities: list) -> float | None:
     """
-    Calculate the weighted average drive-up online (web_rate) $/sqft using UNIT_MIX_WEIGHTS.
-    For each size, averages the web_rate/sqft across all drive-up facilities that have that size,
+    Calculate the weighted average drive-up in-store $/sqft using UNIT_MIX_WEIGHTS.
+    For each size, averages the in_store_rate/sqft across all drive-up facilities that have that size,
     then blends by weight. Weights are normalized to account for sizes with no data.
     Returns None if no drive-up pricing data is available.
     """
-    # Build per-size list of web_rate/sqft values from drive-up facilities
     size_rates: dict[str, list[float]] = {s: [] for s in UNIT_SIZES}
     for f in facilities:
         for p in f.get("pricing", []):
             if p.get("unit_type", p.get("type", "")) != "drive_up":
                 continue
             size = p.get("size", "")
-            web  = p.get("web_rate")
+            rate = p.get("in_store_rate")
             sf   = UNIT_SF.get(size)
-            if web and sf and size in size_rates:
-                size_rates[size].append(web / sf)
+            if rate and sf and size in size_rates:
+                size_rates[size].append(rate / sf)
 
     # Compute per-size averages and pair with weights
     size_avgs: list[tuple[float, float]] = []  # (avg_rate_per_sqft, weight)
@@ -717,17 +718,17 @@ def _calc_weighted_driveup_rent_per_sqft(facilities: list) -> float | None:
 
 
 def _calc_weighted_cc_rent_per_sqft(facilities: list) -> float | None:
-    """Weighted average climate_control online (web_rate) $/sqft using UNIT_MIX_WEIGHTS."""
+    """Weighted average climate_control in-store $/sqft using UNIT_MIX_WEIGHTS."""
     size_rates: dict[str, list[float]] = {s: [] for s in UNIT_SIZES}
     for f in facilities:
         for p in f.get("pricing", []):
             if p.get("unit_type", p.get("type", "")) != "climate_control":
                 continue
             size = p.get("size", "")
-            web  = p.get("web_rate")
+            rate = p.get("in_store_rate")
             sf   = UNIT_SF.get(size)
-            if web and sf and size in size_rates:
-                size_rates[size].append(web / sf)
+            if rate and sf and size in size_rates:
+                size_rates[size].append(rate / sf)
 
     size_avgs: list[tuple[float, float]] = []
     for size, rates in size_rates.items():
@@ -773,7 +774,8 @@ def _load_proforma_from_template(
     Uses a case-insensitive search for the proforma tab so a minor rename in
     the template (e.g. capitalisation change) never breaks the pipeline.
     """
-    wb = openpyxl.load_workbook(TEMPLATE_PATH)
+    template = MIXED_TEMPLATE_PATH if facility_type == "mixed" else TEMPLATE_PATH
+    wb = openpyxl.load_workbook(template)
 
     # Case-insensitive lookup for the proforma sheet
     PROFORMA_NAMES = {"initial look proforma", "proforma", "initial proforma"}
@@ -792,19 +794,19 @@ def _load_proforma_from_template(
         )
     ws = proforma_sheet
     ws.title = "Proforma"
-    ws["B3"] = location or ""        # property location
-    ws["C5"] = acres                 # Acres — auto-filled from Crexi if available
-    ws["C6"] = asking_price          # Cost of Land — auto-filled from Crexi if available
-    ws["E6"] = rent_per_sqft          # Rent Per Sqft — weighted avg minus $0.05 discount
-    if yield_pct is not None:
-        ws["E5"] = yield_pct
-    if cost_per_sqft is not None:
-        ws["E10"] = cost_per_sqft
+    ws["B3"] = location or ""
+    ws["C5"] = acres
+    ws["C6"] = asking_price
+    if facility_type != "mixed":
+        ws["E6"] = rent_per_sqft
+        if yield_pct is not None:
+            ws["E5"] = yield_pct
+        if cost_per_sqft is not None:
+            ws["E10"] = cost_per_sqft
     if facility_type:
-        ws["D3"] = "Facility Type"
-        ws["E3"] = facility_type
-
-    # Crexi listing link — written to C2 (label "Crexi Link" is in B2)
+        if facility_type != "mixed":
+            ws["D3"] = "Facility Type"
+            ws["E3"] = facility_type
     if crexi_url:
         ws["C2"] = crexi_url
         ws["C2"].hyperlink = crexi_url
@@ -814,45 +816,19 @@ def _load_proforma_from_template(
     return wb
 
 
-def _write_mixed_breakdown(ws, assumptions: dict) -> None:
-    """Write the multi-story / single-story split breakdown below the proforma."""
-    from openpyxl.styles import Font
-
-    bold = Font(bold=True)
-    ms_frac = assumptions["ms_frac"]
-    ss_frac = assumptions["ss_frac"]
-    ms_sqft = assumptions["ms_sqft"]
-    ss_sqft = assumptions["ss_sqft"]
-    ms_cost = ms_sqft * _MULTI_STORY_COST
-    ss_cost = ss_sqft * _SINGLE_STORY_COST
-
-    r = 36
-    ws.cell(row=r, column=7, value="Mixed Facility Breakdown").font = bold
-    r += 1
-    ws.cell(row=r, column=7, value="Land Split")
-    ws.cell(row=r, column=8, value=f"{ms_frac:.0%} multi-story / {ss_frac:.0%} single-story")
-    r += 1
-    ws.cell(row=r, column=7, value="Multi-Story CC")
-    ws.cell(row=r, column=8, value=ms_sqft)
-    ws.cell(row=r, column=8).number_format = "#,##0"
-    ws.cell(row=r, column=9, value=f"sqft @ ${_MULTI_STORY_COST:.0f}/sqft")
-    ws.cell(row=r, column=10, value=ms_cost)
-    ws.cell(row=r, column=10).number_format = "$#,##0"
-    r += 1
-    ws.cell(row=r, column=7, value="Single-Story DU")
-    ws.cell(row=r, column=8, value=ss_sqft)
-    ws.cell(row=r, column=8).number_format = "#,##0"
-    ws.cell(row=r, column=9, value=f"sqft @ ${_SINGLE_STORY_COST:.0f}/sqft")
-    ws.cell(row=r, column=10, value=ss_cost)
-    ws.cell(row=r, column=10).number_format = "$#,##0"
-    r += 1
-    ws.cell(row=r, column=7, value="Total Rentable").font = bold
-    ws.cell(row=r, column=8, value=ms_sqft + ss_sqft).font = bold
-    ws.cell(row=r, column=8).number_format = "#,##0"
-    r += 1
-    ws.cell(row=r, column=7, value="Total Construction").font = bold
-    ws.cell(row=r, column=10, value=ms_cost + ss_cost).font = bold
-    ws.cell(row=r, column=10).number_format = "$#,##0"
+def _write_mixed_breakdown(ws, assumptions: dict, cc_rent: float, du_rent: float) -> None:
+    """
+    Fill dynamic values into the mixed proforma template.
+    All layout, labels, formulas, and formatting come from mixed_proforma_template.xlsx.
+    Only the per-deal values need to be written.
+    """
+    ws["F12"] = f"{assumptions['ms_frac']:.0%} multi-story / {assumptions['ss_frac']:.0%} single-story"
+    ws["B15"] = assumptions["ms_sqft"]
+    ws["D15"] = cc_rent
+    ws["D18"] = _MULTI_STORY_COST
+    ws["B24"] = assumptions["ss_sqft"]
+    ws["D24"] = du_rent
+    ws["D27"] = _SINGLE_STORY_COST
 
 
 def write_comps_excel(facilities: list, output_path: str, location: str = "",
@@ -884,8 +860,12 @@ def write_comps_excel(facilities: list, output_path: str, location: str = "",
 
     # For mixed: write breakdown rows showing the land split
     if facility_type == "mixed" and "ms_frac" in assumptions:
+        cc_rent = _calc_weighted_cc_rent_per_sqft(facilities)
+        du_rent = _calc_weighted_driveup_rent_per_sqft(facilities)
+        cc_rent = round(cc_rent - 0.05, 2) if cc_rent else (rent_per_sqft or 0)
+        du_rent = round(du_rent - 0.05, 2) if du_rent else (rent_per_sqft or 0)
         proforma_ws = wb["Proforma"]
-        _write_mixed_breakdown(proforma_ws, assumptions)
+        _write_mixed_breakdown(proforma_ws, assumptions, cc_rent, du_rent)
 
     # Remove any existing Market Comps / Facility List sheets from the template
     for name in ["Market Comps", "Facility List"]:

@@ -57,6 +57,14 @@ A self-storage analysis platform with both a **desktop app** (tkinter) and a **w
    - Extract structured pricing with Claude Haiku (`claude-haiku-4-5-20251001`)
 5. **Write** 3-tab Excel report
 
+### Facility Type Classification
+Parcel acreage determines the facility type, which drives yield, construction cost, and rent assumptions:
+- **single_story (> 4 acres):** 40% yield, $50/sqft, drive-up comps
+- **multi_story (< 2 acres):** 122% yield, $95/sqft, CC comps
+- **mixed (2–4 acres):** Dynamic land split targeting 90,000 rentable sqft, separate CC + DU mini-proformas
+
+Mixed facilities use a dedicated template (`mixed_proforma_template.xlsx`) with two mini-proformas that feed into a main summary. Single/multi-story use `claude excel model template.xlsx`.
+
 ### Key Design Decisions
 - **Firecrawl over Tavily:** Switched because Tavily search returned area/market pages instead of per-facility pages. Firecrawl goes directly to each facility's own website URL (from Google Places) and handles Cloudflare on major chains.
 - **No website = no pricing:** If Google Places has no website URL for a facility, pricing is skipped. No fallback search.
@@ -77,10 +85,10 @@ A self-storage analysis platform with both a **desktop app** (tkinter) and a **w
 ## Excel Output — 3 Tabs
 
 ### Tab 1: Proforma
-- Loaded directly from `claude excel model template.xlsx` — all formatting comes from the file
-- Code fills: B3 (location), clears C5/C6/E6 to blank (user fills in Acres, Land Cost, Rent/sqft)
-- All formulas in G/H columns preserved and live
-- Sheet named "Initial look proforma" in template
+- **Single/Multi-story:** Loaded from `claude excel model template.xlsx` — assumptions in D/E, outputs in G/H
+- **Mixed (2–4 acres):** Loaded from `mixed_proforma_template.xlsx` — two mini-proformas (CC rows 13-20, DU rows 22-29) in columns B-G, main summary in columns I-J
+- Code auto-fills: address, acres, land cost, rent/sqft, yield, construction cost based on facility type
+- See `PROFORMA_LOGIC.md` for full cell map and assumption details
 
 ### Tab 2: Market Comps
 - LEFT: "Drive-Up / Standard Units" (orange #FCE4D6)
@@ -117,7 +125,8 @@ Real Estate Project/
 ├── storage_comps_agent.py              # CLI agent script
 ├── firecrawl_scrape.py                 # Standalone Firecrawl scraper (reference)
 ├── test_pipeline.py                    # Single-facility debug script
-├── claude excel model template.xlsx    # Proforma template — drives Tab 1 formatting
+├── claude excel model template.xlsx    # Proforma template for single/multi-story
+├── mixed_proforma_template.xlsx       # Proforma template for mixed facilities (2-4 acres)
 ├── requirements.txt                    # Desktop dependencies
 ├── Launch Storage Comps App.bat        # Desktop launcher (pythonw3.11.exe)
 └── output/                             # Generated Excel files
