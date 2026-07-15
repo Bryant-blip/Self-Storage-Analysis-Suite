@@ -169,11 +169,11 @@ def process_deal(deal: CrexiDeal, api_keys: dict, dry_run: bool,
             cache_days=cache_days,
         )
         logger.info(
-            "  Gate: %s | Population: %s | ZIP pool: %d ZIP(s) | Subject ZIP: %s",
+            "  Gate: %s | Population: %s | City pool: %d | Subject: %s",
             pop_result["pop_gate_passed"] or "NONE",
             f"{pop_result['population_total']:,}" if pop_result["population_total"] else "unknown",
             pop_result["zip_pool_count"],
-            pop_result["zip_code"] or "unknown",
+            pop_result.get("city_name") or "unknown",
         )
 
         if not pop_result["passes"]:
@@ -248,6 +248,7 @@ def process_deal(deal: CrexiDeal, api_keys: dict, dry_run: bool,
                 first_seen=seen_data[deal.listing_id].get("first_seen"),
                 facilities=facilities,
                 pop_gate_passed=pop_result.get("pop_gate_passed"),
+                city_name=pop_result.get("city_name"),
             )
             logger.info("  SQLite record written for %s", deal.listing_id)
         except Exception as exc:
@@ -274,6 +275,8 @@ def main():
     parser.add_argument("--max-deals", type=int,
                         default=int(os.environ.get("MAX_DEALS_PER_RUN", "3")),
                         help="Max new deals to process per run (default: 3)")
+    parser.add_argument("--max-pages", type=int, default=None,
+                        help="Max Crexi search result pages to scrape (0=all, default: MAX_SEARCH_PAGES env or 0)")
     parser.add_argument("--dry-run", action="store_true",
                         default=os.environ.get("DRY_RUN", "false").lower() == "true",
                         help="Scrape + parse Crexi but skip comps pipeline")
@@ -284,8 +287,8 @@ def main():
     # ── API keys ─────────────────────────────────────────────────────────────
     api_keys = {
         "google":    os.environ.get("GOOGLE_PLACES_API_KEY", ""),
-        "firecrawl": os.environ.get("FIRECRAWL_API_KEY", ""),
-        "anthropic": os.environ.get("ANTHROPIC_API_KEY", ""),
+        "firecrawl": comps_pipeline._get_env("FIRECRAWL_API_KEY"),
+        "anthropic": comps_pipeline._get_env("ANTHROPIC_API_KEY"),
         "census":    os.environ.get("CENSUS_API_KEY", ""),
     }
     # Census key is optional — ACS API works without a key at lower rate limits
@@ -326,24 +329,46 @@ def main():
     logger.info("Dedup state: %s", dedup_module.summary(seen_data))
 
     # ── Stage 1: Discover listings ────────────────────────────────────────────
-    max_pages = int(os.environ.get("MAX_SEARCH_PAGES", "1"))
+    # --max-pages overrides MAX_SEARCH_PAGES env var. 0 means paginate until empty.
+    if args.max_pages is not None:
+        max_pages = args.max_pages
+    else:
+        max_pages = int(os.environ.get("MAX_SEARCH_PAGES", "0"))
+
+    pages_label = f"up to {max_pages}" if max_pages > 0 else "all"
     logger.info("=" * 60)
-    logger.info("Market: %s | Max deals: %d | Dry run: %s", args.market, args.max_deals, args.dry_run)
+    logger.info("Market: %s | Max deals: %d | Max pages: %s | Dry run: %s",
+                args.market, args.max_deals, pages_label, args.dry_run)
     logger.info("=" * 60)
 
     all_raw_listings = []
-    for page in range(1, max_pages + 1):
-        logger.info("Stage 1 — scraping search results (page %d)...", page)
+    page = 1
+    while True:
+        if max_pages > 0 and page > max_pages:
+            logger.info("Reached max pages limit (%d) — stopping search.", max_pages)
+            break
+        logger.info("Stage 1 — scraping search results (page %d%s)...",
+                    page, f"/{max_pages}" if max_pages > 0 else "")
         try:
             raw = scraper_module.scrape_search_results(args.market, api_keys["firecrawl"], page=page)
             all_raw_listings.extend(raw)
-            logger.info("  Found %d listings on page %d", len(raw), page)
-            if page < max_pages:
-                time.sleep(1)
+            logger.info("  Found %d listings on page %d (running total: %d)",
+                        len(raw), page, len(all_raw_listings))
+            if not raw:
+                logger.info("  No listings on page %d — reached end of results.", page)
+                break
+            page += 1
+            time.sleep(1)
         except CrexiBlockedError as exc:
-            logger.error("Crexi blocked on search page: %s", exc)
-            logger.error("Aborting. Check if Firecrawl credits are available or try again later.")
-            sys.exit(1)
+            if page == 1:
+                logger.error("Crexi blocked on search page 1: %s", exc)
+                logger.error("Aborting. Check if Firecrawl credits are available or try again later.")
+                sys.exit(1)
+            else:
+                logger.warning("Page %d blocked or returned no valid results — treating as end of listings.", page)
+                break
+
+    logger.info("Stage 1 complete: scraped %d pages, found %d total raw listings.", page - 1, len(all_raw_listings))
 
     if not all_raw_listings:
         logger.warning("No listings found. Possible causes: Crexi block, no matching results, or URL params changed.")

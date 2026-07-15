@@ -27,13 +27,20 @@ import requests
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-CENTROIDS_OUT  = os.path.join(DATA_DIR, "zip_centroids.csv")
-ADJACENCY_OUT  = os.path.join(DATA_DIR, "zip_adjacency.csv")
+CENTROIDS_OUT       = os.path.join(DATA_DIR, "zip_centroids.csv")
+ADJACENCY_OUT       = os.path.join(DATA_DIR, "zip_adjacency.csv")
+PLACE_CENTROIDS_OUT = os.path.join(DATA_DIR, "place_centroids.csv")
 
 # 2023 ZCTA Gazetteer — tab-delimited, zipped
 GAZETTEER_URL = (
     "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/"
     "2023_Gazetteer/2023_Gaz_zcta_national.zip"
+)
+
+# 2023 Places Gazetteer — tab-delimited, zipped (~30k incorporated places)
+PLACES_GAZETTEER_URL = (
+    "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/"
+    "2023_Gazetteer/2023_Gaz_place_national.zip"
 )
 
 # 2020 ZCTA-to-ZCTA adjacency file — pipe-delimited text
@@ -179,6 +186,56 @@ def build_adjacency(max_miles: float = 10.0):
     return written
 
 
+def build_place_centroids():
+    """Download Census Places Gazetteer and write place_centroids.csv."""
+    raw = download_bytes(PLACES_GAZETTEER_URL, "Places Gazetteer (city centroids)")
+
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        names = [n for n in zf.namelist() if n.endswith(".txt")]
+        if not names:
+            print("ERROR: No .txt file found inside Places Gazetteer zip")
+            sys.exit(1)
+        txt_bytes = zf.read(names[0])
+
+    lines = txt_bytes.decode("utf-8").splitlines()
+    header = [h.strip() for h in lines[0].split("\t")]
+
+    try:
+        idx_geoid = header.index("GEOID")
+        idx_name  = header.index("NAME")
+        idx_usps  = header.index("USPS")
+        idx_lat   = header.index("INTPTLAT")
+        idx_lng   = header.index("INTPTLONG")
+    except ValueError:
+        print(f"  Header columns: {header}")
+        print("ERROR: Could not identify required columns in Places Gazetteer")
+        sys.exit(1)
+
+    written = 0
+    with open(PLACE_CENTROIDS_OUT, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["state_fips", "place_fips", "name", "state", "lat", "lng"])
+        for line in lines[1:]:
+            parts = line.split("\t")
+            if len(parts) <= max(idx_geoid, idx_name, idx_usps, idx_lat, idx_lng):
+                continue
+            try:
+                geoid = parts[idx_geoid].strip()
+                state_fips = geoid[:2]
+                place_fips = geoid[2:]
+                name  = parts[idx_name].strip()
+                state = parts[idx_usps].strip()
+                lat   = float(parts[idx_lat].strip())
+                lng   = float(parts[idx_lng].strip())
+                writer.writerow([state_fips, place_fips, name, state, lat, lng])
+                written += 1
+            except (ValueError, IndexError):
+                continue
+
+    print(f"  Wrote {written:,} rows -> {PLACE_CENTROIDS_OUT}")
+    return written
+
+
 def haversine_simple(lat1, lng1, lat2, lng2):
     R = 3959
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
@@ -196,12 +253,15 @@ if __name__ == "__main__":
     c_rows = build_centroids()
     print()
     a_rows = build_adjacency()
+    print()
+    p_rows = build_place_centroids()
 
     print()
     print("=" * 60)
     print("Done.")
-    print(f"  zip_centroids.csv : {c_rows:,} ZIPs")
-    print(f"  zip_adjacency.csv : {a_rows:,} adjacency pairs")
+    print(f"  zip_centroids.csv   : {c_rows:,} ZIPs")
+    print(f"  zip_adjacency.csv   : {a_rows:,} adjacency pairs")
+    print(f"  place_centroids.csv : {p_rows:,} places")
     print()
     print("Commit these files to the repo — they rarely change.")
     print("=" * 60)

@@ -168,7 +168,13 @@ class CrexiWatcherApp(tk.Tk):
         tk.Checkbutton(r1, text="Dry Run", variable=self._dry_run_var,
                        font=FONT, bg=BG2, fg=FG, selectcolor=BG,
                        activebackground=BG2, activeforeground=FG,
-                       highlightthickness=0).pack(side="left")
+                       highlightthickness=0).pack(side="left", padx=(0, 20))
+
+        tk.Label(r1, text="Max Pages", font=FONT, bg=BG2, fg=MUTED).pack(side="left")
+        self._max_pages_var = tk.IntVar(value=0)
+        ttk.Spinbox(r1, from_=0, to=50, textvariable=self._max_pages_var,
+                    width=4, font=FONT).pack(side="left", padx=(6, 4))
+        tk.Label(r1, text="(0=all)", font=FONT_SM, bg=BG2, fg=MUTED).pack(side="left")
 
         # Row 2: action buttons
         r2 = tk.Frame(outer, bg=BG2)
@@ -336,9 +342,12 @@ class CrexiWatcherApp(tk.Tk):
         )
 
         dry_run = self._dry_run_var.get()
+        max_pages = self._max_pages_var.get()
         for market, pending in markets:
             cmd = [sys.executable, "crexi_watcher.py",
-                   "--market", market, "--max-deals", str(pending)]
+                   "--market", market,
+                   "--max-deals", str(pending),
+                   "--max-pages", str(max_pages)]
             if dry_run:
                 cmd.append("--dry-run")
             self._log_append(f"\n--- Launching {market} ({pending} pending) ---\n")
@@ -361,15 +370,19 @@ class CrexiWatcherApp(tk.Tk):
     def _start_run(self):
         market    = self._market_var.get()
         max_deals = self._max_deals_var.get()
+        max_pages = self._max_pages_var.get()
         dry_run   = self._dry_run_var.get()
 
         cmd = [sys.executable, "crexi_watcher.py",
-               "--market", market, "--max-deals", str(max_deals)]
+               "--market", market,
+               "--max-deals", str(max_deals),
+               "--max-pages", str(max_pages)]
         if dry_run:
             cmd.append("--dry-run")
 
+        pages_label = f"all pages" if max_pages == 0 else f"max {max_pages} page(s)"
         self._log_append(f"\n{'='*60}\n"
-                         f"▶  {market}  |  max-deals={max_deals}"
+                         f"▶  {market}  |  max-deals={max_deals}  |  {pages_label}"
                          f"  |  dry-run={'yes' if dry_run else 'no'}\n"
                          f"{'='*60}\n")
 

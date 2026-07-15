@@ -242,8 +242,8 @@ def api_trends():
         conn.close()
 
 
-@app.route("/api/zip/<zip_code>")
-def api_zip(zip_code):
+@app.route("/api/city/<path:city_name>")
+def api_city(city_name):
     conn = get_db()
     try:
         summary = conn.execute("""
@@ -254,17 +254,17 @@ def api_zip(zip_code):
                    AVG(price_per_acre) AS avg_price_per_acre,
                    market AS state
             FROM deals
-            WHERE zip_code = ? AND processed_at IS NOT NULL AND skip_reason IS NULL
-        """, (zip_code,)).fetchone()
+            WHERE city_name = ? AND processed_at IS NOT NULL AND skip_reason IS NULL
+        """, (city_name,)).fetchone()
 
         deals = conn.execute("""
             SELECT listing_id, address, market, avg_psf, yield_on_cost,
                    population_3mi, deal_score, asking_price, acres, processed_at,
-                   report_path
+                   report_path, pop_gate_passed
             FROM deals
-            WHERE zip_code = ? AND processed_at IS NOT NULL AND skip_reason IS NULL
+            WHERE city_name = ? AND processed_at IS NOT NULL AND skip_reason IS NULL
             ORDER BY deal_score DESC NULLS LAST
-        """, (zip_code,)).fetchall()
+        """, (city_name,)).fetchall()
 
         # Facilities: pivot web_rate by unit_size
         listing_ids = [r["listing_id"] for r in deals]
@@ -615,6 +615,204 @@ def api_watcher_stream(job_id):
     return Response(stream_with_context(gen()),
                     mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ── Comps Pipeline ────────────────────────────────────────────────────────────
+#
+# Runs comps_pipeline.run_comps_pipeline() in a background thread.
+# Progress is streamed to the browser via Server-Sent Events, emitting
+# structured step + progress messages so the frontend can drive a visual stepper.
+
+_COMPS_JOBS: dict = {}
+_COMPS_JOBS_LOCK = threading.Lock()
+
+_COMPS_STEPS = [
+    {"id": "geocode",  "pct_end": 10},
+    {"id": "discover", "pct_end": 18},
+    {"id": "process",  "pct_end": 90},
+    {"id": "excel",    "pct_end": 100},
+]
+
+
+def _pct_to_step(pct: float) -> str:
+    for s in _COMPS_STEPS:
+        if pct <= s["pct_end"]:
+            return s["id"]
+    return "excel"
+
+
+def _make_comps_progress_cb(job_id: str):
+    last_step: list = [None]
+
+    def cb(pct, msg):
+        job = _COMPS_JOBS.get(job_id)
+        if not job:
+            return
+        step_id = _pct_to_step(pct if pct is not None else 0)
+        msgs = []
+        if last_step[0] and last_step[0] != step_id:
+            msgs.append({"type": "step", "step": last_step[0], "status": "done", "msg": ""})
+        if step_id != last_step[0]:
+            last_step[0] = step_id
+        msgs.append({"type": "step", "step": step_id, "status": "active", "msg": msg})
+        msgs.append({"type": "progress", "pct": pct, "msg": msg})
+        for m in msgs:
+            job["log"].append(m)
+            for q in list(job["subscribers"]):
+                try:
+                    q.put_nowait(m)
+                except Exception:
+                    pass
+    return cb
+
+
+def _broadcast_comps(job_id: str, msg: dict):
+    job = _COMPS_JOBS.get(job_id)
+    if not job:
+        return
+    job["log"].append(msg)
+    for q in list(job["subscribers"]):
+        try:
+            q.put_nowait(msg)
+        except Exception:
+            pass
+
+
+@app.route("/api/comps/run", methods=["POST"])
+def api_comps_run():
+    body = request.get_json(silent=True) or {}
+    location = (body.get("location") or "").strip()
+    if not location:
+        return jsonify({"error": "location required"}), 400
+
+    try:
+        radius_miles = float(body.get("radius_miles") or 5)
+    except (ValueError, TypeError):
+        radius_miles = 5.0
+
+    acres        = float(body["acres"])        if body.get("acres")        else None
+    asking_price = float(body["asking_price"]) if body.get("asking_price") else None
+    crexi_url    = (body.get("crexi_url") or "").strip() or ""
+
+    api_keys = {
+        "google":    os.environ.get("GOOGLE_PLACES_API_KEY", ""),
+        "firecrawl": comps_pipeline._get_env("FIRECRAWL_API_KEY"),
+        "anthropic": comps_pipeline._get_env("ANTHROPIC_API_KEY"),
+    }
+    missing = [k for k, v in api_keys.items() if not v]
+    if missing:
+        return jsonify({"error": f"Missing API keys: {', '.join(missing)}"}), 400
+
+    job_id     = uuid.uuid4().hex[:12]
+    started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    stop_event = threading.Event()
+
+    safe_loc    = "".join(c if c.isalnum() or c in " _-" else "_" for c in location)[:40].strip().replace(" ", "_")
+    ts          = datetime.now().strftime("%b-%d-%y")
+    output_path = os.path.join(PROJECT_DIR, "output", f"comps_{safe_loc}_{ts}.xlsx")
+    os.makedirs(os.path.join(PROJECT_DIR, "output"), exist_ok=True)
+
+    job = {
+        "status":      "running",
+        "started_at":  started_at,
+        "finished_at": None,
+        "output_path": None,
+        "error":       None,
+        "stop_event":  stop_event,
+        "log":         deque(maxlen=500),
+        "subscribers": set(),
+    }
+    with _COMPS_JOBS_LOCK:
+        _COMPS_JOBS[job_id] = job
+
+    def run():
+        try:
+            from comps_pipeline import run_comps_pipeline
+            progress_cb = _make_comps_progress_cb(job_id)
+            run_comps_pipeline(
+                location=location,
+                radius_miles=radius_miles,
+                output_path=output_path,
+                api_keys=api_keys,
+                progress_cb=progress_cb,
+                stop_flag=lambda: stop_event.is_set(),
+                acres=acres,
+                asking_price=asking_price,
+                crexi_url=crexi_url,
+            )
+            job["output_path"] = output_path
+            job["status"]      = "success"
+            _broadcast_comps(job_id, {"type": "step", "step": "excel", "status": "done", "msg": "Report ready"})
+        except Exception as exc:
+            job["status"] = "stopped" if stop_event.is_set() else "error"
+            job["error"]  = str(exc)
+        finally:
+            job["finished_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            _broadcast_comps(job_id, {
+                "_done":       True,
+                "status":      job["status"],
+                "output_path": job.get("output_path"),
+                "error":       job.get("error"),
+            })
+
+    threading.Thread(target=run, daemon=True).start()
+    return jsonify({"job_id": job_id, "started_at": started_at})
+
+
+@app.route("/api/comps/stop/<job_id>", methods=["POST"])
+def api_comps_stop(job_id):
+    job = _COMPS_JOBS.get(job_id)
+    if not job:
+        return jsonify({"error": "unknown job"}), 404
+    job["stop_event"].set()
+    job["status"] = "stopped"
+    return jsonify({"ok": True})
+
+
+@app.route("/api/comps/stream/<job_id>")
+def api_comps_stream(job_id):
+    job = _COMPS_JOBS.get(job_id)
+    if not job:
+        return jsonify({"error": "unknown job"}), 404
+
+    q: queue.Queue = queue.Queue()
+    backlog = list(job["log"])
+    job["subscribers"].add(q)
+
+    def gen():
+        try:
+            for item in backlog:
+                yield f"data: {json.dumps(item)}\n\n"
+            if job["status"] != "running":
+                yield f"data: {json.dumps({'_done': True, 'status': job['status'], 'output_path': job.get('output_path'), 'error': job.get('error')})}\n\n"
+                return
+            while True:
+                try:
+                    item = q.get(timeout=15)
+                except queue.Empty:
+                    yield ": keepalive\n\n"
+                    continue
+                if isinstance(item, dict) and item.get("_done"):
+                    yield f"data: {json.dumps(item)}\n\n"
+                    return
+                yield f"data: {json.dumps(item)}\n\n"
+        finally:
+            job["subscribers"].discard(q)
+
+    return Response(stream_with_context(gen()),
+                    mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.route("/api/comps/download/<job_id>")
+def api_comps_download(job_id):
+    job = _COMPS_JOBS.get(job_id)
+    if not job or not job.get("output_path"):
+        abort(404, description="Report not found")
+    path = job["output_path"]
+    if not os.path.exists(path):
+        abort(404, description=f"File not found: {path}")
+    return send_file(path, as_attachment=True, download_name=os.path.basename(path))
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────

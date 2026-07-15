@@ -18,6 +18,7 @@ import json
 import logging
 import math
 import os
+import winreg
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -44,6 +45,24 @@ from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
 logger = logging.getLogger(__name__)
+
+
+def _get_env(name: str) -> str:
+    """
+    Read an environment variable, falling back to the Windows User env store.
+    Needed because Claude Code sets some vars (e.g. ANTHROPIC_API_KEY) to an
+    empty string in the process environment, shadowing the user's real value.
+    """
+    val = os.environ.get(name, "")
+    if val:
+        return val
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment") as key:
+            val, _ = winreg.QueryValueEx(key, name)
+            return val or ""
+    except (FileNotFoundError, OSError):
+        return ""
+
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -811,6 +830,9 @@ def _load_proforma_from_template(
         ws["C2"] = crexi_url
         ws["C2"].hyperlink = crexi_url
         ws["C2"].style = "Hyperlink"
+    else:
+        ws["C2"] = None
+        ws["C2"].hyperlink = None
 
     ws.sheet_view.showGridLines = False
     return wb

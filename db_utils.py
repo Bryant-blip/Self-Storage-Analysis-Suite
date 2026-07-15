@@ -54,7 +54,8 @@ def init_db():
                 processed_at TEXT,
                 skip_reason TEXT,
                 zip_pool_count INTEGER,
-                pop_gate_passed TEXT
+                pop_gate_passed TEXT,
+                city_name TEXT
             );
 
             CREATE TABLE IF NOT EXISTS comps (
@@ -257,6 +258,7 @@ def write_deal_to_db(
     first_seen: str,
     facilities: list,
     pop_gate_passed: str = None,
+    city_name: str = None,
 ):
     """
     Write a processed deal to SQLite. Reads proforma cells from the Excel
@@ -318,14 +320,14 @@ def write_deal_to_db(
                      asking_price, acres, price_per_acre, avg_psf, avg_psf_drive_up,
                      construction_cost_per_sqft, yield_on_cost, nearby_facility_count,
                      report_path, crexi_url, scraped_at, processed_at, zip_pool_count,
-                     population_3mi, pop_gate_passed)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                     population_3mi, pop_gate_passed, city_name)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 listing_id, market, address, zip_code, lat, lng,
                 asking_price, acres, price_per_acre, avg_psf, avg_psf_drive_up,
                 cost_per_sqft, yield_on_cost, nearby_facility_count,
                 report_path, url, first_seen, now, zip_pool_count,
-                population_3mi, pop_gate_passed,
+                population_3mi, pop_gate_passed, city_name,
             ))
 
             # Insert comps rows

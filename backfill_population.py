@@ -1,12 +1,12 @@
 """
 backfill_population.py
 
-One-time script to fill population_3mi for deals that have a zip_code
+One-time script to fill population_3mi for deals that have an address
 but no population data (typically: deals migrated/backfilled before the
 Census integration existed).
 
 For each deal:
-  1. Look up the ZIP centroid to get lat/lng (needed for neighbor search)
+  1. Parse city from address (or geocode lat/lng -> city)
   2. Call check_population_gate() — uses local cache first, Census API second
   3. Write population_3mi, pop_gate_passed, and zip_pool_count back to deals table
 
@@ -16,7 +16,6 @@ Usage:
 
 import argparse
 import os
-import sys
 import logging
 
 from dotenv import load_dotenv
@@ -38,20 +37,19 @@ def main():
 
     census_api_key = os.getenv("CENSUS_API_KEY", "")
     if not census_api_key:
-        logger.warning("CENSUS_API_KEY not set — Census API calls will be unauthenticated (rate-limited)")
+        logger.warning("CENSUS_API_KEY not set -- Census API calls will be unauthenticated (rate-limited)")
+
+    google_api_key = os.getenv("GOOGLE_PLACES_API_KEY", "")
 
     from db_utils import get_db, recalculate_scores
-    from crexi.census_pop import check_population_gate, load_zip_centroids
-
-    centroids = load_zip_centroids()
-    logger.info("Loaded %d ZIP centroids", len(centroids))
+    from crexi.census_pop import check_population_gate
 
     conn = get_db()
     rows = conn.execute("""
-        SELECT listing_id, zip_code, address
+        SELECT listing_id, address, lat, lng
         FROM deals
-        WHERE zip_code IS NOT NULL
-          AND zip_code != ''
+        WHERE address IS NOT NULL
+          AND address != ''
           AND (population_3mi IS NULL OR population_3mi = 0)
         ORDER BY listing_id
     """).fetchall()
@@ -71,24 +69,36 @@ def main():
 
     for i, row in enumerate(rows, 1):
         lid     = row["listing_id"]
-        zip_code = row["zip_code"]
-        address  = row["address"] or ""
+        address = row["address"] or ""
+        lat     = row["lat"]
+        lng     = row["lng"]
 
-        # Get lat/lng from centroid file
-        if zip_code not in centroids:
-            logger.warning("[%d/%d] %s — ZIP %s not in centroids, skipping", i, total, lid, zip_code)
-            skipped += 1
-            continue
+        if not lat or not lng:
+            if google_api_key and address:
+                import requests
+                try:
+                    resp = requests.get(
+                        "https://maps.googleapis.com/maps/api/geocode/json",
+                        params={"address": address, "key": google_api_key},
+                        timeout=10,
+                    )
+                    geo = resp.json().get("results", [{}])[0].get("geometry", {}).get("location", {})
+                    lat, lng = geo.get("lat"), geo.get("lng")
+                except Exception:
+                    pass
 
-        lat, lng = centroids[zip_code]
+            if not lat or not lng:
+                logger.warning("[%d/%d] %s -- no lat/lng, skipping", i, total, lid)
+                skipped += 1
+                continue
 
-        logger.info("[%d/%d] %s | ZIP %s | (%.4f, %.4f)", i, total, lid, zip_code, lat, lng)
+        logger.info("[%d/%d] %s | %s | (%.4f, %.4f)", i, total, lid, address, lat, lng)
 
         try:
             pop_result = check_population_gate(
                 lat=lat,
                 lng=lng,
-                address=address or zip_code,  # pass address; ZIP already known so parse will find it
+                address=address,
                 census_api_key=census_api_key,
             )
         except Exception as exc:
@@ -100,10 +110,11 @@ def main():
         gate       = pop_result.get("pop_gate_passed")
         pool_count = pop_result.get("zip_pool_count", 1)
         passes     = pop_result.get("passes", False)
+        city_name  = pop_result.get("city_name", "?")
 
-        status = f"PASS ({gate})" if passes else f"FAIL — {pop_result.get('skip_reason')}"
-        logger.info("  population_3mi=%s | gate=%s | pool=%d | %s",
-                    f"{pop_3mi:,}" if pop_3mi else "0", gate, pool_count, status)
+        status = f"PASS ({gate})" if passes else f"FAIL -- {pop_result.get('skip_reason')}"
+        logger.info("  city=%s | population_3mi=%s | gate=%s | pool=%d | %s",
+                    city_name, f"{pop_3mi:,}" if pop_3mi else "0", gate, pool_count, status)
 
         if passes:
             passed += 1
@@ -117,9 +128,10 @@ def main():
             UPDATE deals
             SET population_3mi = ?,
                 pop_gate_passed = ?,
-                zip_pool_count  = ?
+                zip_pool_count  = ?,
+                city_name       = ?
             WHERE listing_id = ?
-        """, (pop_3mi or None, gate, pool_count, lid))
+        """, (pop_3mi or None, gate, pool_count, city_name, lid))
 
     if not args.dry_run:
         conn.commit()
@@ -131,11 +143,11 @@ def main():
 
     logger.info("")
     logger.info("=" * 60)
-    logger.info("Backfill complete%s", " (DRY RUN — no writes)" if args.dry_run else "")
+    logger.info("Backfill complete%s", " (DRY RUN -- no writes)" if args.dry_run else "")
     logger.info("  Processed : %d / %d", passed + failed + errors, total)
     logger.info("  Passed    : %d", passed)
     logger.info("  Failed    : %d (below threshold)", failed)
-    logger.info("  Skipped   : %d (ZIP not in centroids)", skipped)
+    logger.info("  Skipped   : %d (no lat/lng)", skipped)
     logger.info("  Errors    : %d", errors)
 
 

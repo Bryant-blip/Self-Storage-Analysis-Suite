@@ -138,7 +138,7 @@
     .page-btn:hover:not(:disabled) { background: #f0fdf4; border-color: #1a7a4a; color: #1a7a4a; }
     .page-btn:disabled { opacity: .4; cursor: default; }
     .page-info { color: #64748b; }
-    /* ZIP drill-down */
+    /* City drill-down */
     .zip-panel { background: #f0fdf4; border: 1px solid #86efac; border-radius: 10px;
                  margin-bottom: 24px; overflow: hidden;
                  animation: slideDown .2s ease; }
@@ -237,6 +237,26 @@
     .fd-tag.error    { background: #fee2e2; color: #991b1b; }
     .btn-danger { background: #fff; color: #b91c1c; border: 1px solid #fecaca; }
     .btn-danger:hover { background: #fef2f2; }
+    /* ── Comps Pipeline Stepper ── */
+    .pipeline-stepper { display: flex; flex-direction: column; }
+    .pipeline-step { display: flex; gap: 14px; align-items: flex-start; }
+    .step-left { display: flex; flex-direction: column; align-items: center; width: 36px; flex-shrink: 0; }
+    .step-circle { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center;
+                   justify-content: center; flex-shrink: 0; transition: background .2s, border-color .2s; }
+    .step-circle.step-pending { background: #f1f5f9; border: 2px solid #e2e8f0; }
+    .step-circle.step-active  { background: #3b82f6; border: 2px solid #3b82f6; }
+    .step-circle.step-done    { background: #1a7a4a; border: 2px solid #1a7a4a; }
+    .step-circle.step-error   { background: #dc2626; border: 2px solid #dc2626; }
+    .step-connector { width: 2px; min-height: 20px; background: #e2e8f0; margin: 3px 0; }
+    .step-connector-done { background: #1a7a4a; }
+    .step-content { padding-bottom: 18px; padding-top: 7px; }
+    .step-label { font-size: 13px; font-weight: 500; color: #94a3b8; }
+    .step-label-active { color: #1e293b; font-weight: 600; }
+    .step-msg { font-size: 12px; color: #64748b; margin-top: 3px;
+                font-family: 'Consolas', 'Menlo', monospace; }
+    .step-spinner { display: inline-block; width: 16px; height: 16px;
+                    border: 2px solid rgba(255,255,255,.35); border-top-color: #fff;
+                    border-radius: 50%; animation: spin .7s linear infinite; }
   </style>
 </head>
 <body>
@@ -273,9 +293,9 @@ function fmt(v, type) {
 function popGateBadge(gate) {
   if (!gate) return null;
   const cfg = {
-    subject_hit:  { label: 'S', title: 'Subject ZIP ≥ 30k',                  cls: 'badge-green'  },
-    combo_hit:    { label: 'C', title: 'Subject + closest neighbor ≥ 40k',    cls: 'badge-yellow' },
-    neighbor_hit: { label: 'N', title: 'Neighbor ZIP within 3 mi ≥ 30k',      cls: 'badge-orange' },
+    subject_hit:  { label: 'S', title: 'Subject city ≥ 30k',                  cls: 'badge-green'  },
+    combo_hit:    { label: 'C', title: 'Subject + closest neighbor city ≥ 40k', cls: 'badge-yellow' },
+    neighbor_hit: { label: 'N', title: 'Neighbor city within 3 mi ≥ 30k',      cls: 'badge-orange' },
   };
   const c = cfg[gate];
   if (!c) return null;
@@ -455,8 +475,8 @@ function MetricCards({ overview }) {
     { label: 'Avg Yield/Cost',  value: fmt(overview.avg_yoc, 'pct'),                 sub: 'Yield to cost',                        border: cardBorderColor('avg_yoc', overview.avg_yoc) },
     { label: 'Avg Rent PSF',    value: fmt(overview.avg_psf, 'psf'),                 sub: 'Drive-up weighted avg',                border: '#3b82f6' },
     { label: 'Avg Price/Acre',  value: fmt(overview.avg_price_per_acre, 'usd'),      sub: 'Land cost per acre',                   border: '#f59e0b' },
-    { label: 'Avg Population',  value: fmt(overview.avg_population, 'num'),          sub: 'Sum of ZIPs within 3 mi',              border: '#1a7a4a' },
-    { label: 'ZIPs 50K+',       value: (overview.zip_count_above_50k||0).toString(), sub: '3-mi pop above 50k',                  border: '#1a7a4a' },
+    { label: 'Avg Population',  value: fmt(overview.avg_population, 'num'),          sub: 'City population within 3 mi',          border: '#1a7a4a' },
+    { label: 'Cities 50K+',     value: (overview.zip_count_above_50k||0).toString(), sub: '3-mi pop above 50k',                  border: '#1a7a4a' },
   ];
 
   return (
@@ -672,52 +692,52 @@ function MarketMiniChart({ title, states, getValue, formatVal, color }) {
   );
 }
 
-function MarketComparison({ filters, overview, deals, onZipClick }) {
+function MarketComparison({ filters, overview, deals, onCityClick }) {
   if (filters.state !== 'all') {
-    // ZIP breakdown table
-    const zipMap = {};
+    const cityMap = {};
     deals.forEach(d => {
-      if (!d.zip_code) return;
-      if (!zipMap[d.zip_code]) zipMap[d.zip_code] = { zip: d.zip_code, deals: [], state: d.market };
-      zipMap[d.zip_code].deals.push(d);
+      const city = d.city_name || d.zip_code;
+      if (!city) return;
+      if (!cityMap[city]) cityMap[city] = { city, deals: [], state: d.market };
+      cityMap[city].deals.push(d);
     });
-    const zips = Object.values(zipMap).map(z => ({
-      zip: z.zip,
-      state: z.state,
-      count: z.deals.length,
-      avg_psf: z.deals.reduce((a,d) => a+(d.avg_psf||0),0) / z.deals.length,
-      avg_yoc: z.deals.reduce((a,d) => a+(d.yield_on_cost||0),0) / z.deals.length,
-      avg_pop: z.deals.reduce((a,d) => a+(d.population_3mi||0),0) / z.deals.length,
-      avg_ppa: z.deals.reduce((a,d) => a+(d.price_per_acre||0),0) / z.deals.length,
+    const cities = Object.values(cityMap).map(c => ({
+      city: c.city,
+      state: c.state,
+      count: c.deals.length,
+      avg_psf: c.deals.reduce((a,d) => a+(d.avg_psf||0),0) / c.deals.length,
+      avg_yoc: c.deals.reduce((a,d) => a+(d.yield_on_cost||0),0) / c.deals.length,
+      avg_pop: c.deals.reduce((a,d) => a+(d.population_3mi||0),0) / c.deals.length,
+      avg_ppa: c.deals.reduce((a,d) => a+(d.price_per_acre||0),0) / c.deals.length,
     })).sort((a,b) => b.count - a.count);
 
     return (
       <div className="section-card">
         <div className="section-header">
-          <div className="section-title">{filters.state} — ZIP Code Breakdown</div>
+          <div className="section-title">{filters.state} — City Breakdown</div>
         </div>
         <div className="section-body" style={{padding:0}}>
-          {zips.length === 0
+          {cities.length === 0
             ? <div className="empty-state"><div>No deals found for selected filters</div></div>
             : (
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>ZIP</th><th>Deals</th><th>Avg PSF</th><th>Avg YoC</th>
+                    <th>City</th><th>Deals</th><th>Avg PSF</th><th>Avg YoC</th>
                     <th>Avg Population</th><th>Avg $/Acre</th><th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {zips.map(z => (
-                    <tr key={z.zip}>
-                      <td style={{fontWeight:600}}>{z.zip}</td>
-                      <td>{z.count}</td>
-                      <td>{fmt(z.avg_psf,'psf')}</td>
-                      <td>{fmt(z.avg_yoc,'pct')}</td>
-                      <td>{fmt(z.avg_pop,'num')}</td>
-                      <td>{fmt(z.avg_ppa,'usd')}</td>
+                  {cities.map(c => (
+                    <tr key={c.city}>
+                      <td style={{fontWeight:600}}>{c.city}</td>
+                      <td>{c.count}</td>
+                      <td>{fmt(c.avg_psf,'psf')}</td>
+                      <td>{fmt(c.avg_yoc,'pct')}</td>
+                      <td>{fmt(c.avg_pop,'num')}</td>
+                      <td>{fmt(c.avg_ppa,'usd')}</td>
                       <td>
-                        <button className="btn-link" onClick={() => onZipClick(z.zip, z.state)}>
+                        <button className="btn-link" onClick={() => onCityClick(c.city, c.state)}>
                           View →
                         </button>
                       </td>
@@ -769,20 +789,20 @@ function MarketComparison({ filters, overview, deals, onZipClick }) {
   );
 }
 
-// ── ZIP Drill-Down ────────────────────────────────────────────────────────────
+// ── City Drill-Down ───────────────────────────────────────────────────────────
 
-function ZipDrillDown({ zip, onClose }) {
+function CityDrillDown({ city, onClose }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    if (!zip) return;
-    fetch(`/api/zip/${zip}`)
+    if (!city) return;
+    fetch(`/api/city/${encodeURIComponent(city)}`)
       .then(r => r.json())
       .then(setData)
       .catch(() => {});
-  }, [zip]);
+  }, [city]);
 
-  if (!zip) return null;
+  if (!city) return null;
 
   const summary    = data?.summary || {};
   const facilities = data?.facilities || [];
@@ -792,7 +812,7 @@ function ZipDrillDown({ zip, onClose }) {
   return (
     <div className="zip-panel">
       <div className="zip-panel-header">
-        <div className="zip-panel-title">ZIP Code {zip} — {summary.state || ''}</div>
+        <div className="zip-panel-title">{city} — {summary.state || ''}</div>
         <button className="zip-close" onClick={onClose}>✕</button>
       </div>
 
@@ -843,7 +863,7 @@ function ZipDrillDown({ zip, onClose }) {
 
           {deals.length > 0 && (
             <div className="zip-section">
-              <div className="zip-section-title">Deals in ZIP {zip}</div>
+              <div className="zip-section-title">Deals in {city}</div>
               <table className="data-table">
                 <thead>
                   <tr>
@@ -895,6 +915,7 @@ function DealsTable({ deals, loading }) {
   const filtered = deals
     .filter(d => {
       if (search && !d.address?.toLowerCase().includes(search.toLowerCase())
+                 && !d.city_name?.toLowerCase().includes(search.toLowerCase())
                  && !d.zip_code?.includes(search)) return false;
       if (minYoc > 0 && (d.yield_on_cost || 0) * 100 < minYoc) return false;
       if (minPop && (d.population_3mi || 0) < parseInt(minPop)) return false;
@@ -942,7 +963,7 @@ function DealsTable({ deals, loading }) {
       </div>
       <div className="section-body">
         <div className="table-controls">
-          <input className="search-input" placeholder="Search address or ZIP…"
+          <input className="search-input" placeholder="Search address or city…"
                  value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
 
           <div style={{display:'flex',alignItems:'center',gap:6}}>
@@ -977,11 +998,12 @@ function DealsTable({ deals, loading }) {
                       ['yield_on_cost','YoC'],['deal_score','Score'],['processed_at','Date'],
                     ].map(([col,label]) => (
                       <th key={col} onClick={() => sortCol(col)}
-                          title={col === 'population_3mi' ? 'Sum of all ZIP populations within 3 miles of the property. S=subject ZIP, C=combo, N=neighbor.' : undefined}>
+                          title={col === 'population_3mi' ? 'Sum of city populations within 3 miles. S=subject city, C=combo, N=neighbor city.' : undefined}>
                         {label}<span className="sort-arrow">{arrow(col)}</span>
                       </th>
                     ))}
                     <th>Report</th>
+                    <th>CREXI</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1007,6 +1029,13 @@ function DealsTable({ deals, loading }) {
                           <a href={`/api/report/${d.listing_id}`}
                              className="btn btn-outline btn-sm" download title="Download report">📄</a>
                         )}
+                      </td>
+                      <td>
+                        {d.crexi_url
+                          ? <a href={d.crexi_url} target="_blank" rel="noopener noreferrer"
+                               className="btn btn-outline btn-sm" title="Open CREXI listing">↗ CREXI</a>
+                          : <span style={{color:'#94a3b8'}}>—</span>
+                        }
                       </td>
                     </tr>
                   ))}
@@ -1042,6 +1071,50 @@ function parseProgress(line) {
   const cur = +m[1], tot = +m[2];
   if (!tot) return null;
   return { pct: Math.round(cur / tot * 100), label: `${cur}/${tot}` };
+}
+
+function parsePipelineSteps(logLines) {
+  const steps = {
+    search: { status: 'pending', msg: '' },
+    screen: { status: 'pending', msg: '' },
+    comps:  { status: 'pending', msg: '' },
+    save:   { status: 'pending', msg: '' },
+  };
+  const clean = s => s.replace(/^\d+:\d+:\d+\s+\S+\s+/, '').trim();
+  let current = null;
+  let compsPct = null;
+
+  for (const raw of logLines) {
+    const line = raw || '';
+    if (line.includes('Stage 1')) {
+      steps.search.status = 'active';
+      steps.search.msg = clean(line);
+      current = 'search';
+    } else if (line.includes('Stage 2a') || (line.includes('geocoding') && current === 'search')) {
+      if (current === 'search') steps.search.status = 'done';
+      steps.screen.status = 'active';
+      steps.screen.msg = clean(line);
+      current = 'screen';
+    } else if (line.includes('Stage 2c') || line.match(/\[\s*[\d.]+%\s*\]/)) {
+      if (current === 'search') steps.search.status = 'done';
+      if (current === 'screen') steps.screen.status = 'done';
+      steps.comps.status = 'active';
+      const pctM = line.match(/\[\s*([\d.]+)%\s*\]/);
+      if (pctM) { compsPct = parseFloat(pctM[1]); steps.comps.msg = clean(line); }
+      else steps.comps.msg = clean(line);
+      current = 'comps';
+    } else if (line.includes('Report saved') || line.includes('SQLite record')) {
+      if (current === 'search') steps.search.status = 'done';
+      if (current === 'screen') steps.screen.status = 'done';
+      if (current === 'comps')  steps.comps.status  = 'done';
+      steps.save.status = 'active';
+      steps.save.msg = 'Saving to database…';
+      current = 'save';
+    } else if (line.includes('SKIP') && current === 'screen') {
+      steps.screen.msg = clean(line);
+    }
+  }
+  return { steps, current, compsPct };
 }
 
 function timeAgo(iso) {
@@ -1338,24 +1411,78 @@ function FindDealsView({ subView, refreshDeals, setFilters, setActiveNav }) {
               })
             )}
 
-            {/* Log pane for the watched job */}
-            {liveJob && (
-              <div style={{marginTop:14}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                  <div style={{fontSize:12,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:.5}}>
-                    Live Log — {watchedJob?.market || ''}
+            {/* Pipeline stepper + log for the watched job */}
+            {liveJob && (() => {
+              const { steps, current, compsPct } = parsePipelineSteps(liveLog);
+              const STEP_ORDER_FD  = ['search', 'screen', 'comps', 'save'];
+              const STEP_LABELS_FD = {
+                search: 'Search CREXI Listings',
+                screen: 'Screen Deals',
+                comps:  'Run Comps Pipeline',
+                save:   'Save Results',
+              };
+              const isRunning = watchedJob?.status === 'running';
+              // Mark all steps done when finished
+              const displaySteps = { ...steps };
+              if (!isRunning && current) {
+                STEP_ORDER_FD.forEach(id => {
+                  if (displaySteps[id].status === 'active') displaySteps[id] = { ...displaySteps[id], status: 'done' };
+                });
+              }
+              return (
+                <div style={{marginTop:16,borderTop:'1px solid #f1f5f9',paddingTop:16}}>
+                  <div className="pipeline-stepper">
+                    {STEP_ORDER_FD.map((id, i) => {
+                      const s = displaySteps[id];
+                      return (
+                        <div key={id} className="pipeline-step">
+                          <div className="step-left">
+                            <div className={`step-circle step-${s.status}`}>
+                              {s.status === 'done'    && <span style={{color:'#fff',fontWeight:700,fontSize:14}}>✓</span>}
+                              {s.status === 'error'   && <span style={{color:'#fff',fontWeight:700,fontSize:14}}>✕</span>}
+                              {s.status === 'active'  && <span className="step-spinner" />}
+                              {s.status === 'pending' && <span style={{color:'#94a3b8',fontWeight:600,fontSize:12}}>{i+1}</span>}
+                            </div>
+                            {i < STEP_ORDER_FD.length - 1 && (
+                              <div className={`step-connector${s.status === 'done' ? ' step-connector-done' : ''}`} />
+                            )}
+                          </div>
+                          <div className="step-content">
+                            <div className={`step-label${s.status !== 'pending' ? ' step-label-active' : ''}`}>
+                              {STEP_LABELS_FD[id]}
+                            </div>
+                            {s.msg && <div className="step-msg">{s.msg}</div>}
+                            {id === 'comps' && s.status === 'active' && compsPct !== null && (
+                              <div style={{marginTop:5,width:180}}>
+                                <div className="fd-progress-wrap" style={{height:4}}>
+                                  <div className="fd-progress-bar" style={{width:`${compsPct}%`}} />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <button className="btn-link" onClick={() => setLiveLog([])}>Clear</button>
+
+                  <div style={{marginTop:12}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                      <div style={{fontSize:12,fontWeight:600,color:'#64748b',textTransform:'uppercase',letterSpacing:.5}}>
+                        Live Log — {watchedJob?.market || ''}
+                      </div>
+                      <button className="btn-link" onClick={() => setLiveLog([])}>Clear</button>
+                    </div>
+                    <div ref={logRef} className="fd-log">
+                      {liveLog.length === 0
+                        ? <div className="fd-log-empty">Waiting for output…</div>
+                        : liveLog.map((line, i) => (
+                            <div key={i} className={`fd-log-line ${classifyLogLine(line)}`}>{line}</div>
+                          ))}
+                    </div>
+                  </div>
                 </div>
-                <div ref={logRef} className="fd-log">
-                  {liveLog.length === 0
-                    ? <div className="fd-log-empty">Waiting for output…</div>
-                    : liveLog.map((line, i) => (
-                        <div key={i} className={`fd-log-line ${classifyLogLine(line)}`}>{line}</div>
-                      ))}
-                </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         </div>
       )}
@@ -1411,6 +1538,253 @@ function FindDealsView({ subView, refreshDeals, setFilters, setActiveNav }) {
 
 // ── App Root ──────────────────────────────────────────────────────────────────
 
+// ── Comps View ────────────────────────────────────────────────────────────────
+
+const STEP_ORDER  = ['geocode', 'discover', 'process', 'excel'];
+const STEP_LABELS = {
+  geocode:  'Geocode Address',
+  discover: 'Find Nearby Facilities',
+  process:  'Scrape & Extract Pricing',
+  excel:    'Write Excel Report',
+};
+const BLANK_STEPS = () => ({
+  geocode:  { status: 'pending', msg: '' },
+  discover: { status: 'pending', msg: '' },
+  process:  { status: 'pending', msg: '' },
+  excel:    { status: 'pending', msg: '' },
+});
+
+function CompsView() {
+  const [form, setForm] = useState({
+    location: '', radius_miles: '5', acres: '', asking_price: '', crexi_url: '',
+  });
+  const [jobId,    setJobId]    = useState(null);
+  const [running,  setRunning]  = useState(false);
+  const [steps,    setSteps]    = useState(BLANK_STEPS());
+  const [progress, setProgress] = useState({ pct: 0, msg: '' });
+  const [result,   setResult]   = useState(null);
+  const [logLines, setLogLines] = useState([]);
+  const [showLog,  setShowLog]  = useState(false);
+  const esRef  = useRef(null);
+  const logRef = useRef(null);
+
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [logLines]);
+  useEffect(() => () => { if (esRef.current) esRef.current.close(); }, []);
+
+  function reset() {
+    setSteps(BLANK_STEPS());
+    setProgress({ pct: 0, msg: '' });
+    setResult(null);
+    setLogLines([]);
+  }
+
+  function openStream(jid) {
+    if (esRef.current) { esRef.current.close(); esRef.current = null; }
+    const es = new EventSource(`/api/comps/stream/${jid}`);
+    esRef.current = es;
+    es.onmessage = ev => {
+      try {
+        const d = JSON.parse(ev.data);
+        if (d._done) {
+          es.close(); esRef.current = null;
+          setRunning(false);
+          setResult({ status: d.status, output_path: d.output_path, error: d.error });
+          if (d.status === 'success') setProgress(p => ({ ...p, pct: 100 }));
+        } else if (d.type === 'step') {
+          setSteps(prev => ({ ...prev, [d.step]: { status: d.status, msg: d.msg } }));
+          if (d.msg) setLogLines(prev => [...prev.slice(-499), d.msg]);
+        } else if (d.type === 'progress') {
+          setProgress({ pct: d.pct || 0, msg: d.msg });
+          if (d.msg) setLogLines(prev => [...prev.slice(-499), d.msg]);
+        }
+      } catch (e) {}
+    };
+    es.onerror = () => {};
+  }
+
+  async function handleRun() {
+    if (!form.location.trim() || running) return;
+    reset();
+    setRunning(true);
+    try {
+      const r = await fetch('/api/comps/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location:      form.location,
+          radius_miles:  parseFloat(form.radius_miles) || 5,
+          acres:         form.acres        ? parseFloat(form.acres)                             : null,
+          asking_price:  form.asking_price ? parseFloat(form.asking_price.replace(/[,$]/g,''))  : null,
+          crexi_url:     form.crexi_url || '',
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) { setResult({ status: 'error', error: data.error || 'Failed to start' }); setRunning(false); return; }
+      setJobId(data.job_id);
+      openStream(data.job_id);
+    } catch (err) {
+      setResult({ status: 'error', error: String(err) });
+      setRunning(false);
+    }
+  }
+
+  async function handleStop() {
+    if (!jobId) return;
+    await fetch(`/api/comps/stop/${jobId}`, { method: 'POST' }).catch(() => {});
+    if (esRef.current) { esRef.current.close(); esRef.current = null; }
+    setRunning(false);
+    setResult({ status: 'stopped' });
+    setSteps(prev => {
+      const u = { ...prev };
+      STEP_ORDER.forEach(id => { if (u[id].status === 'active') u[id] = { ...u[id], status: 'error', msg: 'Stopped' }; });
+      return u;
+    });
+  }
+
+  const pct = progress.pct || 0;
+
+  return (
+    <div style={{padding:24, maxWidth:740}}>
+      <div className="section-card">
+        <div className="section-header">
+          <div className="section-title">Run Market Comps</div>
+        </div>
+        <div className="section-body">
+          {/* Input form */}
+          <div className="fd-grid" style={{marginBottom:16}}>
+            <div className="fd-field" style={{gridColumn:'span 7'}}>
+              <label className="fd-label">Location *</label>
+              <input className="fd-input" placeholder="Address, city/state, or zip"
+                     value={form.location} disabled={running}
+                     onChange={e => setForm(f => ({...f, location: e.target.value}))}
+                     onKeyDown={e => e.key === 'Enter' && handleRun()} />
+            </div>
+            <div className="fd-field" style={{gridColumn:'span 2'}}>
+              <label className="fd-label">Radius (mi)</label>
+              <input className="fd-input" type="number" min="1" max="20" step="0.5"
+                     value={form.radius_miles} disabled={running}
+                     onChange={e => setForm(f => ({...f, radius_miles: e.target.value}))} />
+            </div>
+            <div className="fd-field" style={{gridColumn:'span 3'}}>
+              <label className="fd-label">&nbsp;</label>
+              <div className="fd-actions">
+                {!running
+                  ? <button className="btn btn-primary" onClick={handleRun}
+                            disabled={!form.location.trim()}>▶ Run Comps</button>
+                  : <button className="btn btn-danger"  onClick={handleStop}>◼ Stop</button>
+                }
+              </div>
+            </div>
+            <div className="fd-field" style={{gridColumn:'span 4'}}>
+              <label className="fd-label">Acres</label>
+              <input className="fd-input" type="number" min="0" step="0.1" placeholder="Optional"
+                     value={form.acres} disabled={running}
+                     onChange={e => setForm(f => ({...f, acres: e.target.value}))} />
+            </div>
+            <div className="fd-field" style={{gridColumn:'span 4'}}>
+              <label className="fd-label">Asking Price</label>
+              <input className="fd-input" placeholder="Optional"
+                     value={form.asking_price} disabled={running}
+                     onChange={e => setForm(f => ({...f, asking_price: e.target.value}))} />
+            </div>
+            <div className="fd-field" style={{gridColumn:'span 4'}}>
+              <label className="fd-label">CREXI URL</label>
+              <input className="fd-input" placeholder="Optional"
+                     value={form.crexi_url} disabled={running}
+                     onChange={e => setForm(f => ({...f, crexi_url: e.target.value}))} />
+            </div>
+          </div>
+
+          {/* Pipeline stepper */}
+          {(running || result) && (
+            <div style={{marginTop:24,borderTop:'1px solid #f1f5f9',paddingTop:20}}>
+              <div className="pipeline-stepper">
+                {STEP_ORDER.map((id, i) => {
+                  const s = steps[id];
+                  return (
+                    <div key={id} className="pipeline-step">
+                      <div className="step-left">
+                        <div className={`step-circle step-${s.status}`}>
+                          {s.status === 'done'    && <span style={{color:'#fff',fontWeight:700,fontSize:14}}>✓</span>}
+                          {s.status === 'error'   && <span style={{color:'#fff',fontWeight:700,fontSize:14}}>✕</span>}
+                          {s.status === 'active'  && <span className="step-spinner" />}
+                          {s.status === 'pending' && <span style={{color:'#94a3b8',fontWeight:600,fontSize:12}}>{i+1}</span>}
+                        </div>
+                        {i < STEP_ORDER.length - 1 && (
+                          <div className={`step-connector${s.status === 'done' ? ' step-connector-done' : ''}`} />
+                        )}
+                      </div>
+                      <div className="step-content">
+                        <div className={`step-label${s.status !== 'pending' ? ' step-label-active' : ''}`}>
+                          {STEP_LABELS[id]}
+                        </div>
+                        {s.msg && <div className="step-msg">{s.msg}</div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Progress bar */}
+              <div style={{marginTop:8}}>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+                  <span style={{fontSize:12,color:'#64748b'}}>{progress.msg}</span>
+                  <span style={{fontSize:12,color:'#64748b',fontWeight:600}}>{Math.round(pct)}%</span>
+                </div>
+                <div className="fd-progress-wrap" style={{height:8}}>
+                  <div className="fd-progress-bar" style={{width:`${pct}%`}} />
+                </div>
+              </div>
+
+              {/* Result banners */}
+              {result?.status === 'success' && (
+                <div className="fd-banner" style={{marginTop:16}}>
+                  <span className="fd-banner-text">Report complete</span>
+                  <a className="btn btn-sm btn-outline" href={`/api/comps/download/${jobId}`}>
+                    Download Excel
+                  </a>
+                </div>
+              )}
+              {result?.status === 'error' && (
+                <div className="fd-banner" style={{marginTop:16,background:'#fef2f2',borderColor:'#fecaca',borderLeftColor:'#dc2626'}}>
+                  <span className="fd-banner-text" style={{color:'#991b1b'}}>
+                    Error: {result.error || 'Pipeline failed'}
+                  </span>
+                </div>
+              )}
+              {result?.status === 'stopped' && (
+                <div className="fd-banner" style={{marginTop:16,background:'#f8fafc',borderColor:'#e2e8f0',borderLeftColor:'#94a3b8'}}>
+                  <span className="fd-banner-text" style={{color:'#64748b'}}>Pipeline stopped</span>
+                </div>
+              )}
+
+              {/* Collapsible log */}
+              <div style={{marginTop:14}}>
+                <button className="btn-link" style={{fontSize:12}}
+                        onClick={() => setShowLog(v => !v)}>
+                  {showLog ? '▾ Hide log' : '▸ Show log'}
+                </button>
+                {showLog && (
+                  <div className="fd-log" ref={logRef} style={{marginTop:6,height:200}}>
+                    {logLines.length === 0
+                      ? <span className="fd-log-empty">No log output yet…</span>
+                      : logLines.map((l, i) => <div key={i} className="fd-log-line">{l}</div>)
+                    }
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── App ───────────────────────────────────────────────────────────────────────
+
 function App() {
   const [filters, setFilters] = useState({
     state: 'all', unitSize: '', unitType: '', minYoc: '', dateRange: 'all'
@@ -1420,8 +1794,8 @@ function App() {
   const [overview,  setOverview]  = useState(null);
   const [deals,     setDeals]     = useState([]);
   const [dealsLoading, setDealsLoading] = useState(false);
-  const [openZip,   setOpenZip]   = useState(null);
-  const [openZipState, setOpenZipState] = useState('');
+  const [openCity,  setOpenCity]   = useState(null);
+  const [openCityState, setOpenCityState] = useState('');
 
   // Fetch states (for sidebar)
   useEffect(() => {
@@ -1449,9 +1823,9 @@ function App() {
       .catch(() => setDealsLoading(false));
   }, [filters]);
 
-  const handleZipClick = (zip, state) => {
-    setOpenZip(zip);
-    setOpenZipState(state);
+  const handleCityClick = (city, state) => {
+    setOpenCity(city);
+    setOpenCityState(state);
   };
 
   return (
@@ -1544,19 +1918,19 @@ function App() {
               <DealsBarChart filters={filters} />
             </div>
 
-            {/* Section 3: Market Comparison / ZIP Table */}
+            {/* Section 3: Market Comparison / City Table */}
             <MarketComparison
               filters={filters}
               overview={overview}
               deals={deals}
-              onZipClick={handleZipClick}
+              onCityClick={handleCityClick}
             />
 
-            {/* Section 4: ZIP Drill-Down */}
-            {openZip && (
-              <ZipDrillDown
-                zip={openZip}
-                onClose={() => setOpenZip(null)}
+            {/* Section 4: City Drill-Down */}
+            {openCity && (
+              <CityDrillDown
+                city={openCity}
+                onClose={() => setOpenCity(null)}
               />
             )}
 
