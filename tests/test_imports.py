@@ -14,7 +14,6 @@ MODULES = [
     "crexi.census_pop",
     "crexi_watcher",
     "rank_reports",
-    "rank_deals",
     "app",
 ]
 

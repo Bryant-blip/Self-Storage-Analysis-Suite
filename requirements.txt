@@ -1,29 +1,29 @@
 # Self Storage Tools — Desktop App Dependencies
 
 # Claude Agent SDK (used by Fact-Check and Market Analysis agents)
-claude-agent-sdk
+claude-agent-sdk==0.1.52
 
 # Async runtime (required by Agent SDK)
-anyio
+anyio==4.13.0
 
 # Excel file generation
-openpyxl
+openpyxl==3.1.5
 
 
 # HTTP requests (Google Places / Geocoding API calls)
-requests
+requests==2.33.1
 
 # Competitor website scraping (handles JS rendering + Cloudflare)
-firecrawl-py
+firecrawl-py==4.21.1
 
 # Pricing extraction via Claude API (direct, not Agent SDK)
-anthropic
+anthropic==0.86.0
 
 # Environment variable loading from .env
-python-dotenv
+python-dotenv==1.2.2
 
 # Analytics dashboard (app.py)
-flask
+flask==3.1.3
 
 # Fallback JS-rendered scraping for dynamic pricing widgets (scrape_prices.py)
-playwright
+playwright==1.58.0

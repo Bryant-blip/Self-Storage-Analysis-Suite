@@ -126,7 +126,6 @@ Real Estate Project/
 ├── db_utils.py                         # SQLite schema, migrations, deal scoring
 ├── crexi/                              # Crexi scraper, census population gate, dedup
 ├── rank_reports.py                     # Ranked Excel of all deals (canonical deal_score)
-├── rank_deals.py                       # Older ranking tool (reads the same DB score)
 ├── scripts/                            # One-off backfill/migration/maintenance tools
 ├── storage_comps_agent.py              # CLI agent script
 ├── firecrawl_scrape.py                 # Standalone Firecrawl scraper (reference)
