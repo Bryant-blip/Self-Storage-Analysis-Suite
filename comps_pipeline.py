@@ -44,6 +44,7 @@ def _is_aggregator(url: str) -> bool:
 import requests
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.comments import Comment
 
 from openpyxl.utils import get_column_letter
 
@@ -785,6 +786,14 @@ def _load_proforma_from_template(
     ws["B3"] = location or ""
     ws["C5"] = acres
     ws["C6"] = asking_price
+    if asking_price is None:
+        # No asking price on the listing → land cost drops out of the model
+        # and Equity Value / Payback are overstated. Flag it for the reader.
+        ws["C6"].fill = PatternFill("solid", fgColor="FFC7CE")
+        ws["C6"].comment = Comment(
+            "No asking price on the listing — Cost of Land is excluded, so "
+            "Equity Value and Payback Period are overstated. Enter the land "
+            "cost here to correct the analysis.", "comps_pipeline")
     if facility_type != "mixed":
         ws["E6"] = rent_per_sqft
         if yield_pct is not None:

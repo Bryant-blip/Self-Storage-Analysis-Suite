@@ -472,6 +472,9 @@ def api_watcher_run():
             text=True, encoding="utf-8", errors="replace",
             cwd=PROJECT_DIR,
             bufsize=1,
+            # Force the child to emit UTF-8 — Windows pipes default to cp1252,
+            # which mangles em-dashes/arrows in the live log.
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         )
     except Exception as exc:
         return jsonify({"error": f"failed to launch: {exc}"}), 500

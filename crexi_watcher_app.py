@@ -356,6 +356,7 @@ class CrexiWatcherApp(tk.Tk):
                     cmd,
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, encoding="utf-8", errors="replace", cwd=PROJECT_DIR,
+                    env={**os.environ, "PYTHONIOENCODING": "utf-8"},
                 )
             except Exception as exc:
                 self._log_append(f"ERROR launching {market}: {exc}\n")
@@ -395,6 +396,7 @@ class CrexiWatcherApp(tk.Tk):
                 encoding="utf-8",
                 errors="replace",
                 cwd=PROJECT_DIR,
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
             )
         except Exception as exc:
             self._log_append(f"ERROR starting process: {exc}\n")
