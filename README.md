@@ -6,9 +6,15 @@ Tools for finding, underwriting, and tracking self-storage development deals —
 
 ## Screenshots
 
-| Analytics dashboard | Sample proforma output |
+![Analytics dashboard](docs/screenshots/dashboard.png)
+
+| New search — live pipeline run | All deals — scored & filterable |
 |---|---|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Proforma report](docs/screenshots/proforma.png) |
+| ![New search](docs/screenshots/new-search.png) | ![All deals](docs/screenshots/all-deals.png) |
+
+| Proforma tab (auto-filled) | Market comps tab |
+|---|---|
+| ![Proforma](docs/screenshots/proforma.png) | ![Market comps](docs/screenshots/market-comps.png) |
 
 ## What it does
 
