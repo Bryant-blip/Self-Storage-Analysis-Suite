@@ -23,3 +23,9 @@ anthropic
 
 # Environment variable loading from .env
 python-dotenv
+
+# Analytics dashboard (app.py)
+flask
+
+# Fallback JS-rendered scraping for dynamic pricing widgets (scrape_prices.py)
+playwright
