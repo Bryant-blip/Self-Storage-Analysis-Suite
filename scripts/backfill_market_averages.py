@@ -10,6 +10,9 @@ Usage:
     python backfill_market_averages.py --apply   # writes to files
 """
 
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # run from repo root or scripts/
+
 import glob
 import os
 import sys

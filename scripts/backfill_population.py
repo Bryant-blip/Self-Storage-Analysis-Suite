@@ -14,6 +14,9 @@ Usage:
     python backfill_population.py [--dry-run]
 """
 
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # run from repo root or scripts/
+
 import argparse
 import os
 import logging

@@ -1,6 +1,14 @@
 # Self-Storage Analysis Suite
 
+[![CI](https://github.com/Bryant-blip/Self-Storage-Analysis-Suite/actions/workflows/ci.yml/badge.svg)](https://github.com/Bryant-blip/Self-Storage-Analysis-Suite/actions/workflows/ci.yml)
+
 Tools for finding, underwriting, and tracking self-storage development deals — automated market rent comps, a land-deal watcher, and an analytics dashboard.
+
+## Screenshots
+
+| Analytics dashboard | Sample proforma output |
+|---|---|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Proforma report](docs/screenshots/proforma.png) |
 
 ## What it does
 
@@ -19,6 +27,8 @@ Given a subject address, the core pipeline:
 - **`crexi_watcher.py`** / **`crexi_watcher_app.py`** — background agent that polls Crexi for new land listings in a target market, filters them against acreage/population criteria, and automatically runs the full comps pipeline on anything that passes (CLI or Tkinter desktop UI — see `Launch Crexi Watcher.bat`)
 - **`app.py`** — Flask dashboard over the SQLite deal history (`data/deals.db`): deal counts, average yield-on-cost, $/sqft, and population by market
 - **`crexi/`** — Crexi scraping, parsing, deduplication, and Census population-gate modules used by the watcher
+- **`scripts/`** — one-off backfill/migration tools (population, land cost, market averages, report regeneration)
+- **`tests/`** — pytest suite covering the pure-logic pieces (geometry, facility classification, rent weighting, proforma math, deal scoring) plus an import smoke test; runs in CI on every push (`pytest -q` locally)
 
 ## Facility Type Classification
 

@@ -9,8 +9,6 @@ anyio
 # Excel file generation
 openpyxl
 
-# Distance / geocoding calculations
-geopy
 
 # HTTP requests (Google Places / Geocoding API calls)
 requests

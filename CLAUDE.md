@@ -1,7 +1,7 @@
 # Storage Tools — Self Storage Analysis Suite
 
 ## Project Overview
-A self-storage analysis platform with both a **desktop app** (tkinter) and a **web app** (FastAPI).
+A self-storage analysis platform: a **Flask web dashboard** (`app.py`) for deal analytics, plus an automated **Crexi deal-watcher pipeline** (`crexi_watcher.py`, with a tkinter launcher in `crexi_watcher_app.py`).
 
 ### Tools
 1. **Market Comps** — Automated rent comp analysis. Given a location and radius, the pipeline discovers nearby self-storage facilities via Google Places, scrapes each facility's own website using Firecrawl, extracts structured pricing with Claude Haiku, and outputs a formatted 3-tab Excel report.
@@ -19,29 +19,27 @@ A self-storage analysis platform with both a **desktop app** (tkinter) and a **w
 - **No fabricated data.** Market comps only include pricing sourced directly from each facility's website. If a rate can't be found, leave the cell blank — never guess.
 - **Distance is mandatory.** Every facility must have a verified Haversine distance from the subject property. Hard radius enforcement — Google Places radius is a hint, not a guarantee.
 ### Professionalism — Institutional Quality
-- **Structured output.** Excel reports match the proforma template exactly — loaded directly from `claude excel model template.xlsx`.
+- **Structured output.** Excel reports match the proforma templates exactly — loaded directly from `claude excel model template.xlsx` (single/multi-story) or `mixed_proforma_template.xlsx` (mixed 2–4 acres).
 - **Error handling with grace.** Users see clear, actionable error messages — never raw stack traces.
 
 ---
 
 ## Architecture
 
-### Desktop App (`storage_comps_app.py`)
-- **Framework:** tkinter with dark theme (#0d1117 background)
-- **Tabs:** Market Comps
-- **Backend:** `comps_pipeline.py` — direct API pipeline (no Agent SDK)
-- **Output:** Excel files via `openpyxl` saved to `output/`
-- **Launch:** `Launch Storage Comps App.bat` (uses `pythonw3.11.exe`)
-- **API keys:** GOOGLE_PLACES_API_KEY, FIRECRAWL_API_KEY, ANTHROPIC_API_KEY (from `.env`)
-- **Auto-install:** `_ensure_deps()` bootstrap installs missing packages on launch
+### Web Dashboard (`app.py`)
+- **Framework:** Flask serving a single-page UI from `templates/index.html`
+- **Database:** SQLite (`data/deals.db`) via `db_utils.py` — schema, migrations, and deal scoring live there
+- **Features:** deal analytics, market/city breakdowns with drill-down, launching comps runs with streamed progress
+- **Launch:** `python app.py` → http://127.0.0.1:5000
 
-### Web App (`web/`)
-- **Framework:** FastAPI + Jinja2 templates
-- **Auth:** JWT tokens + bcrypt password hashing
-- **Database:** SQLAlchemy — SQLite locally, PostgreSQL in production
-- **API Key Model:** BYOK — each user provides their own Anthropic API key
-- **Streaming:** Server-Sent Events (SSE) for real-time agent output
-- **Launch:** `python -m uvicorn app:app --host 127.0.0.1 --port 5000`
+### Crexi Watcher (`crexi_watcher.py`)
+- **CLI pipeline:** scrape Crexi search results (Firecrawl) → census population gate → comps pipeline → Excel report + SQLite record
+- **Launcher:** `crexi_watcher_app.py` (tkinter, dark theme) / `Launch Crexi Watcher.bat`
+- **Defaults:** 1 search page per run (`--max-pages 0` or `MAX_SEARCH_PAGES=0` for all pages), 3 deals per run
+- **API keys:** GOOGLE_PLACES_API_KEY, FIRECRAWL_API_KEY, ANTHROPIC_API_KEY, optional CENSUS_API_KEY (from `.env`)
+
+### Maintenance Scripts (`scripts/`)
+One-off backfill/migration tools (population, land cost, market averages, report regeneration). Each has a `sys.path` shim so they run from the repo root or `scripts/` directly.
 
 ---
 
@@ -119,17 +117,27 @@ ANTHROPIC_API_KEY=       # console.anthropic.com
 Real Estate Project/
 ├── CLAUDE.md                           # This file
 ├── .env                                # API keys (never commit)
-├── .env.example                        # Template for .env
+├── app.py                              # Flask analytics dashboard
+├── templates/index.html                # Dashboard single-page UI
 ├── comps_pipeline.py                   # Core pipeline — geocode → scrape → extract → Excel
-├── storage_comps_app.py                # Desktop app (tkinter)
+├── crexi_watcher.py                    # Crexi deal-watcher CLI
+├── crexi_watcher_app.py                # tkinter launcher for the watcher
+├── Launch Crexi Watcher.bat            # Watcher launcher
+├── db_utils.py                         # SQLite schema, migrations, deal scoring
+├── crexi/                              # Crexi scraper, census population gate, dedup
+├── rank_reports.py                     # Ranked Excel of all deals (canonical deal_score)
+├── rank_deals.py                       # Older ranking tool (reads the same DB score)
+├── scripts/                            # One-off backfill/migration/maintenance tools
 ├── storage_comps_agent.py              # CLI agent script
 ├── firecrawl_scrape.py                 # Standalone Firecrawl scraper (reference)
 ├── test_pipeline.py                    # Single-facility debug script
+├── tests/                              # pytest suite (pure-logic + import smoke)
 ├── claude excel model template.xlsx    # Proforma template for single/multi-story
-├── mixed_proforma_template.xlsx       # Proforma template for mixed facilities (2-4 acres)
-├── requirements.txt                    # Desktop dependencies
-├── Launch Storage Comps App.bat        # Desktop launcher (pythonw3.11.exe)
-└── output/                             # Generated Excel files
+├── mixed_proforma_template.xlsx        # Proforma template for mixed facilities (2-4 acres)
+├── requirements.txt                    # Dependencies
+├── data/                               # place_centroids.csv, census cache, deals.db
+├── output/                             # Generated comps Excel files
+└── reports/                            # Per-market deal reports + rankings
 ```
 
 ---
@@ -141,9 +149,9 @@ Real Estate Project/
 - **Website Scraping:** Firecrawl (`firecrawl-py`) — JS rendering + Cloudflare bypass
 - **Pricing Extraction:** Claude Haiku (`claude-haiku-4-5-20251001`) via direct Anthropic API
 - **Excel:** openpyxl — reads template, writes dynamic tabs
-- **Web Framework:** FastAPI + uvicorn (web app only)
+- **Web Framework:** Flask (analytics dashboard `app.py`)
 
-## Desktop Dependencies
+## Core Dependencies
 ```
-firecrawl-py, anthropic, openpyxl, requests, geopy, python-dotenv
+firecrawl-py, anthropic, openpyxl, requests, python-dotenv, flask, playwright
 ```
