@@ -116,6 +116,13 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+        # Add city_name for existing DBs created before city_name was added
+        try:
+            conn.execute("ALTER TABLE deals ADD COLUMN city_name TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
     finally:
         conn.close()
 
@@ -198,8 +205,16 @@ def calc_proforma_cells(ws) -> dict:
     """
     Read raw assumption cells from an openpyxl proforma worksheet.
     Returns dict with keys: acres, asking_price, avg_psf, cost_per_sqft,
-    yield_pct, occupancy, expense_ratio, cap_rate.
+    yield_pct, occupancy, expense_ratio, cap_rate, facility_type.
     Any cell that is missing or non-numeric → None.
+
+    Mixed-facility reports (mixed_proforma_template.xlsx) don't have the
+    single E5-E10 assumptions block — instead they carry a CC mini-proforma
+    (rows 13-20) and a DU mini-proforma (rows 22-29) that roll up into a
+    main summary. When E5 is empty but B15 (CC rentable sqft) has a value,
+    this is detected as the mixed layout and the return dict is built from
+    a sqft-weighted blend of the two mini-proformas instead. In that case
+    an extra "du_psf" key (drive-up rent $/sqft from D24) is also returned.
     """
     def _float(cell_ref):
         try:
@@ -208,15 +223,67 @@ def calc_proforma_cells(ws) -> dict:
         except (TypeError, ValueError):
             return None
 
+    def _str(cell_ref):
+        v = ws[cell_ref].value
+        return str(v).strip() if v is not None else None
+
+    acres = _float("C5")
+    e5 = _float("E5")
+    cc_sqft = _float("B15")
+
+    if e5 is None and cc_sqft is not None:
+        # Mixed layout: CC mini-proforma rows 13-20, DU mini-proforma rows 22-29
+        du_sqft = _float("B24")
+        cc_rent = _float("D15")
+        du_rent = _float("D24")
+        cc_cost = _float("D18")
+        du_cost = _float("D27")
+        cc_occ  = _float("D16")
+        du_occ  = _float("D25")
+        cc_exp  = _float("D17")
+        du_exp  = _float("D26")
+
+        def _blend(cc_val, du_val):
+            if cc_val is None or du_val is None or du_sqft is None:
+                return None
+            total = cc_sqft + du_sqft
+            return (cc_val * cc_sqft + du_val * du_sqft) / total if total else None
+
+        def _blend_if_diff(cc_val, du_val):
+            if cc_val is None or du_val is None:
+                return None
+            if cc_val == du_val:
+                return cc_val
+            return _blend(cc_val, du_val)
+
+        yield_pct = None
+        if acres and du_sqft is not None:
+            land_sqft = acres * 43560
+            yield_pct = (cc_sqft + du_sqft) / land_sqft if land_sqft else None
+
+        return {
+            "acres":          acres,
+            "asking_price":   _float("C6"),
+            "avg_psf":        _blend(cc_rent, du_rent),
+            "yield_pct":      yield_pct,
+            "occupancy":      _blend_if_diff(cc_occ, du_occ),
+            "expense_ratio":  _blend_if_diff(cc_exp, du_exp),
+            "cap_rate":       _float("C8"),
+            "cost_per_sqft":  _blend(cc_cost, du_cost),
+            "facility_type":  "mixed",
+            "du_psf":         du_rent,
+        }
+
     return {
-        "acres":          _float("C5"),
+        "acres":          acres,
         "asking_price":   _float("C6"),
         "avg_psf":        _float("E6"),
-        "yield_pct":      _float("E5"),
+        "yield_pct":      e5,
         "occupancy":      _float("E7"),
         "expense_ratio":  _float("E8"),
         "cap_rate":       _float("E9"),
         "cost_per_sqft":  _float("E10"),
+        "facility_type":  _str("E3"),
     }
 
 
@@ -259,6 +326,7 @@ def write_deal_to_db(
     facilities: list,
     pop_gate_passed: str = None,
     city_name: str = None,
+    recalc: bool = True,
 ):
     """
     Write a processed deal to SQLite. Reads proforma cells from the Excel
@@ -300,9 +368,18 @@ def write_deal_to_db(
         asking_price = cells.get("asking_price")
         avg_psf      = cells.get("avg_psf")
         cost_per_sqft = cells.get("cost_per_sqft")
+        facility_type = cells.get("facility_type")
 
-        price_per_acre   = (asking_price / acres) if (asking_price and acres) else None
-        avg_psf_drive_up = (avg_psf + 0.05) if avg_psf is not None else None
+        price_per_acre = (asking_price / acres) if (asking_price and acres) else None
+        if facility_type == "multi_story":
+            # avg_psf here is a climate-controlled rate, not drive-up — no
+            # drive-up rate exists for a multi-story facility.
+            avg_psf_drive_up = None
+        elif facility_type == "mixed":
+            du_psf = cells.get("du_psf")
+            avg_psf_drive_up = (du_psf + 0.05) if du_psf is not None else None
+        else:
+            avg_psf_drive_up = (avg_psf + 0.05) if avg_psf is not None else None
         yield_on_cost    = _calc_yoc(cells)
         nearby_facility_count = len(facilities) if facilities else (
             # Fall back to counting Facility List tab rows
@@ -355,7 +432,8 @@ def write_deal_to_db(
                               size, unit_type, web_rate, in_store, rate_psf, now))
 
             conn.commit()
-            recalculate_scores(conn)
+            if recalc:
+                recalculate_scores(conn)
         finally:
             conn.close()
 

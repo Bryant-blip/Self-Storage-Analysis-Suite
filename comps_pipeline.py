@@ -18,7 +18,10 @@ import json
 import logging
 import math
 import os
-import winreg
+try:
+    import winreg
+except ImportError:  # non-Windows platforms
+    winreg = None
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -56,6 +59,8 @@ def _get_env(name: str) -> str:
     val = os.environ.get(name, "")
     if val:
         return val
+    if winreg is None:
+        return ""
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment") as key:
             val, _ = winreg.QueryValueEx(key, name)
@@ -76,12 +81,14 @@ UNIT_MIX_WEIGHTS = {"5x5": 0.12, "5x10": 0.25, "10x10": 0.30, "10x15": 0.15,
 
 # ── Facility-type constants ───────────────────────────────────────────────────
 # Lehi, UT reference: 1.6 acres → 115K gross / 85K rentable
-_MULTI_STORY_YIELD  = round(85_000 / (1.6 * 43_560), 4)  # ~1.2196 (122%)
-_SINGLE_STORY_YIELD = 0.40                                 # 40%
-_MIXED_TARGET_SQFT  = 90_000
+# Business assumptions below — override via .env / environment variables without
+# touching code (defaults preserve the original hardcoded values).
+_MULTI_STORY_YIELD  = float(os.environ.get("MULTI_STORY_YIELD", str(round(85_000 / (1.6 * 43_560), 4))))  # ~1.2196 (122%)
+_SINGLE_STORY_YIELD = float(os.environ.get("SINGLE_STORY_YIELD", "0.40"))                                   # 40%
+_MIXED_TARGET_SQFT  = float(os.environ.get("MIXED_TARGET_SQFT", "90000"))
 
-_MULTI_STORY_COST  = 95.0
-_SINGLE_STORY_COST = 50.0
+_MULTI_STORY_COST  = float(os.environ.get("MULTI_STORY_COST", "95.0"))
+_SINGLE_STORY_COST = float(os.environ.get("SINGLE_STORY_COST", "50.0"))
 
 
 def classify_facility(acres: float | None) -> str:
@@ -701,20 +708,21 @@ def _calc_avg_rent_per_sqft(facilities: list):
     return round(sum(rates) / len(rates), 2) if rates else None
 
 
-def _calc_weighted_driveup_rent_per_sqft(facilities: list) -> float | None:
+def _calc_weighted_rent_per_sqft(facilities: list, unit_type: str) -> float | None:
     """
-    Calculate the weighted average drive-up in-store $/sqft using UNIT_MIX_WEIGHTS.
-    For each size, averages the in_store_rate/sqft across all drive-up facilities that have that size,
-    then blends by weight. Weights are normalized to account for sizes with no data.
-    Returns None if no drive-up pricing data is available.
+    Calculate the weighted average in-store $/sqft (falling back to web_rate when
+    in_store_rate isn't published) for the given unit_type, using UNIT_MIX_WEIGHTS.
+    For each size, averages the rate/sqft across all matching facilities that have
+    that size, then blends by weight. Weights are normalized to account for sizes
+    with no data. Returns None if no matching pricing data is available.
     """
     size_rates: dict[str, list[float]] = {s: [] for s in UNIT_SIZES}
     for f in facilities:
         for p in f.get("pricing", []):
-            if p.get("unit_type", p.get("type", "")) != "drive_up":
+            if p.get("unit_type", p.get("type", "")) != unit_type:
                 continue
             size = p.get("size", "")
-            rate = p.get("in_store_rate")
+            rate = p.get("in_store_rate") or p.get("web_rate")
             sf   = UNIT_SF.get(size)
             if rate and sf and size in size_rates:
                 size_rates[size].append(rate / sf)
@@ -734,45 +742,6 @@ def _calc_weighted_driveup_rent_per_sqft(facilities: list) -> float | None:
     total_w = sum(w for _, w in size_avgs)
     weighted = sum(avg * (w / total_w) for avg, w in size_avgs)
     return round(weighted, 2)
-
-
-def _calc_weighted_cc_rent_per_sqft(facilities: list) -> float | None:
-    """Weighted average climate_control in-store $/sqft using UNIT_MIX_WEIGHTS."""
-    size_rates: dict[str, list[float]] = {s: [] for s in UNIT_SIZES}
-    for f in facilities:
-        for p in f.get("pricing", []):
-            if p.get("unit_type", p.get("type", "")) != "climate_control":
-                continue
-            size = p.get("size", "")
-            rate = p.get("in_store_rate")
-            sf   = UNIT_SF.get(size)
-            if rate and sf and size in size_rates:
-                size_rates[size].append(rate / sf)
-
-    size_avgs: list[tuple[float, float]] = []
-    for size, rates in size_rates.items():
-        if not rates:
-            continue
-        w = UNIT_MIX_WEIGHTS.get(size, 0.0)
-        if w > 0:
-            size_avgs.append((sum(rates) / len(rates), w))
-
-    if not size_avgs:
-        return None
-
-    total_w = sum(w for _, w in size_avgs)
-    weighted = sum(avg * (w / total_w) for avg, w in size_avgs)
-    return round(weighted, 2)
-
-
-def _calc_mixed_rent_per_sqft(facilities: list, ms_frac: float) -> float | None:
-    """Blended rent using the computed multi-story / single-story split."""
-    cc_rate = _calc_weighted_cc_rent_per_sqft(facilities)
-    du_rate = _calc_weighted_driveup_rent_per_sqft(facilities)
-
-    if cc_rate is not None and du_rate is not None:
-        return round(ms_frac * cc_rate + (1 - ms_frac) * du_rate, 2)
-    return cc_rate or du_rate
 
 
 def _load_proforma_from_template(
@@ -838,18 +807,21 @@ def _load_proforma_from_template(
     return wb
 
 
-def _write_mixed_breakdown(ws, assumptions: dict, cc_rent: float, du_rent: float) -> None:
+def _write_mixed_breakdown(ws, assumptions: dict, cc_rent: float | None, du_rent: float | None) -> None:
     """
     Fill dynamic values into the mixed proforma template.
     All layout, labels, formulas, and formatting come from mixed_proforma_template.xlsx.
-    Only the per-deal values need to be written.
+    Only the per-deal values need to be written. If a rate is missing (None), the
+    corresponding cell is left untouched/blank — never guessed or substituted.
     """
     ws["F12"] = f"{assumptions['ms_frac']:.0%} multi-story / {assumptions['ss_frac']:.0%} single-story"
     ws["B15"] = assumptions["ms_sqft"]
-    ws["D15"] = cc_rent
+    if cc_rent is not None:
+        ws["D15"] = cc_rent
     ws["D18"] = _MULTI_STORY_COST
     ws["B24"] = assumptions["ss_sqft"]
-    ws["D24"] = du_rent
+    if du_rent is not None:
+        ws["D24"] = du_rent
     ws["D27"] = _SINGLE_STORY_COST
 
 
@@ -861,16 +833,21 @@ def write_comps_excel(facilities: list, output_path: str, location: str = "",
     facility_type = classify_facility(acres)
     assumptions = calc_facility_assumptions(facility_type, acres=acres)
 
+    # Compute both weighted rates once — reused across the main proforma cell
+    # and (for mixed) the CC/DU breakdown rows, instead of recomputing 2-3x.
+    cc_rate = _calc_weighted_rent_per_sqft(facilities, "climate_control")
+    du_rate = _calc_weighted_rent_per_sqft(facilities, "drive_up")
+
     if facility_type == "multi_story":
-        raw_rate = _calc_weighted_cc_rent_per_sqft(facilities)
+        raw_rate = cc_rate if cc_rate is not None else du_rate
     elif facility_type == "mixed":
         ms_frac = assumptions.get("ms_frac", 0.5)
-        raw_rate = _calc_mixed_rent_per_sqft(facilities, ms_frac)
+        if cc_rate is not None and du_rate is not None:
+            raw_rate = round(ms_frac * cc_rate + (1 - ms_frac) * du_rate, 2)
+        else:
+            raw_rate = cc_rate if cc_rate is not None else du_rate
     else:
-        raw_rate = _calc_weighted_driveup_rent_per_sqft(facilities)
-
-    if raw_rate is None:
-        raw_rate = _calc_weighted_driveup_rent_per_sqft(facilities)
+        raw_rate = du_rate
 
     rent_per_sqft = round(raw_rate - 0.05, 2) if raw_rate is not None else None
     wb = _load_proforma_from_template(location, acres=acres,
@@ -880,12 +857,12 @@ def write_comps_excel(facilities: list, output_path: str, location: str = "",
                                       cost_per_sqft=assumptions["cost_per_sqft"],
                                       facility_type=facility_type)
 
-    # For mixed: write breakdown rows showing the land split
+    # For mixed: write breakdown rows showing the land split. Missing rates are
+    # passed through as None — never fabricated or substituted with the other
+    # type's blended rent (repo rule: leave the cell blank, never guess).
     if facility_type == "mixed" and "ms_frac" in assumptions:
-        cc_rent = _calc_weighted_cc_rent_per_sqft(facilities)
-        du_rent = _calc_weighted_driveup_rent_per_sqft(facilities)
-        cc_rent = round(cc_rent - 0.05, 2) if cc_rent else (rent_per_sqft or 0)
-        du_rent = round(du_rent - 0.05, 2) if du_rent else (rent_per_sqft or 0)
+        cc_rent = round(cc_rate - 0.05, 2) if cc_rate is not None else None
+        du_rent = round(du_rate - 0.05, 2) if du_rate is not None else None
         proforma_ws = wb["Proforma"]
         _write_mixed_breakdown(proforma_ws, assumptions, cc_rent, du_rent)
 

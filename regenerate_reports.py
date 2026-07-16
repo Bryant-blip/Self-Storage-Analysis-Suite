@@ -144,6 +144,7 @@ def main():
                 facilities=facilities,
                 pop_gate_passed=row["pop_gate_passed"],
                 city_name=row["city_name"],
+                recalc=False,
             )
         except Exception as exc:
             logger.error("  ERROR: %s", exc)

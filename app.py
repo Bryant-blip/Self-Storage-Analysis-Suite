@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import comps_pipeline
 from db_utils import get_db, init_db
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))

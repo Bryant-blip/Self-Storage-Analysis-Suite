@@ -44,6 +44,39 @@ def haversine(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return 2 * R * math.asin(math.sqrt(a))
 
 
+def _bbox_candidates(places: dict, lat: float, lng: float, radius_miles: float):
+    """
+    Yield (fips_key, info) pairs from `places` whose centroid falls within the
+    bounding box for `radius_miles` of (lat, lng). Pure prefilter: it never
+    excludes a point that would pass an exact haversine check, so callers must
+    still apply haversine() to candidates yielded here — this only skips the
+    (vast majority of) candidates that can't possibly be in range.
+    """
+    lat_margin = radius_miles / 69.0
+    lng_margin = radius_miles / (69.0 * max(0.1, math.cos(math.radians(lat))))
+    for fips_key, info in places.items():
+        if abs(info["lat"] - lat) > lat_margin:
+            continue
+        if abs(info["lng"] - lng) > lng_margin:
+            continue
+        yield fips_key, info
+
+
+def _find_nearest_place(places: dict, lat: float, lng: float,
+                        radius_miles: float = 10.0) -> Optional[tuple[tuple[str, str], float]]:
+    """Return (fips_key, distance_miles) for the closest place centroid within
+    radius_miles of (lat, lng), or None if no place is that close."""
+    best_key = None
+    best_dist = None
+    for fips_key, info in _bbox_candidates(places, lat, lng, radius_miles):
+        d = haversine(lat, lng, info["lat"], info["lng"])
+        if d <= radius_miles and (best_dist is None or d < best_dist):
+            best_key, best_dist = fips_key, d
+    if best_key is None:
+        return None
+    return best_key, best_dist
+
+
 # ── Address parsing ──────────────────────────────────────────────────────────
 
 def parse_city_state_from_address(address: str) -> tuple[Optional[str], Optional[str]]:
@@ -164,8 +197,14 @@ def census_geocode_place(lat: float, lng: float) -> Optional[tuple[str, str]]:
 
 # ── SQLite cache ──────────────────────────────────────────────────────────────
 
+_cache_db_ready: set = set()
+
+
 def _ensure_cache_db(db_path: str = CENSUS_CACHE_DB) -> None:
-    """Create census_place_cache table if it doesn't exist."""
+    """Create census_place_cache table if it doesn't exist. Cheap no-op on
+    every call after the first for a given db_path within this process."""
+    if db_path in _cache_db_ready:
+        return
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.execute("""
@@ -178,6 +217,7 @@ def _ensure_cache_db(db_path: str = CENSUS_CACHE_DB) -> None:
             )
         """)
         conn.commit()
+    _cache_db_ready.add(db_path)
 
 
 def get_cached_population(place_key: str, db_path: str = CENSUS_CACHE_DB,
@@ -302,6 +342,17 @@ def check_population_gate(
         subject_fips = census_geocode_place(lat, lng)
 
     if not subject_fips:
+        logger.info("  Census geocoder found no incorporated place — "
+                    "falling back to nearest place centroid within 10 mi")
+        nearest = _find_nearest_place(places, lat, lng, radius_miles=10.0)
+        if nearest:
+            subject_fips, nearest_dist = nearest
+            nearest_info = places.get(subject_fips, {})
+            logger.info("  Nearest-place fallback used: %s, %s (%.2f mi away)",
+                        nearest_info.get("name", "?"), nearest_info.get("state", "?"),
+                        nearest_dist)
+
+    if not subject_fips:
         logger.warning("  Could not determine subject city — skipping population gate")
         result["skip_reason"] = "population_check_failed: could not determine city"
         return result
@@ -312,7 +363,7 @@ def check_population_gate(
 
     # Step 2 — Find neighbor cities within 3-mile radius, sorted by distance
     neighbors_by_distance: list[tuple[float, tuple[str, str]]] = []
-    for fips_key, info in places.items():
+    for fips_key, info in _bbox_candidates(places, lat, lng, 3.0):
         if fips_key == subject_fips:
             continue
         d = haversine(lat, lng, info["lat"], info["lng"])

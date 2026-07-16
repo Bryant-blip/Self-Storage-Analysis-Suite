@@ -43,13 +43,14 @@ def main():
 
     from db_utils import get_db, recalculate_scores
     from crexi.census_pop import check_population_gate
+    import comps_pipeline
 
     conn = get_db()
     rows = conn.execute("""
-        SELECT listing_id, address, lat, lng
+        SELECT listing_id, address, zip_code, lat, lng
         FROM deals
-        WHERE address IS NOT NULL
-          AND address != ''
+        WHERE (address IS NOT NULL AND address != '')
+           OR (zip_code IS NOT NULL AND zip_code != '')
           AND (population_3mi IS NULL OR population_3mi = 0)
         ORDER BY listing_id
     """).fetchall()
@@ -68,26 +69,21 @@ def main():
     errors = 0
 
     for i, row in enumerate(rows, 1):
-        lid     = row["listing_id"]
-        address = row["address"] or ""
-        lat     = row["lat"]
-        lng     = row["lng"]
+        lid      = row["listing_id"]
+        address  = row["address"] or ""
+        zip_code = row["zip_code"] or ""
+        lat      = row["lat"]
+        lng      = row["lng"]
 
-        if not lat or not lng:
-            if google_api_key and address:
-                import requests
+        if lat is None or lng is None:
+            geocode_addr = address or zip_code
+            if google_api_key and geocode_addr:
                 try:
-                    resp = requests.get(
-                        "https://maps.googleapis.com/maps/api/geocode/json",
-                        params={"address": address, "key": google_api_key},
-                        timeout=10,
-                    )
-                    geo = resp.json().get("results", [{}])[0].get("geometry", {}).get("location", {})
-                    lat, lng = geo.get("lat"), geo.get("lng")
-                except Exception:
-                    pass
+                    lat, lng = comps_pipeline._geocode(geocode_addr, google_api_key)
+                except Exception as exc:
+                    logger.warning("[%d/%d] %s -- geocoding failed: %s", i, total, lid, exc)
 
-            if not lat or not lng:
+            if lat is None or lng is None:
                 logger.warning("[%d/%d] %s -- no lat/lng, skipping", i, total, lid)
                 skipped += 1
                 continue
@@ -98,7 +94,7 @@ def main():
             pop_result = check_population_gate(
                 lat=lat,
                 lng=lng,
-                address=address,
+                address=address or zip_code,
                 census_api_key=census_api_key,
             )
         except Exception as exc:

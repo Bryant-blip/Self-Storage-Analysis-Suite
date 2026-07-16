@@ -276,7 +276,7 @@ def main():
                         default=int(os.environ.get("MAX_DEALS_PER_RUN", "3")),
                         help="Max new deals to process per run (default: 3)")
     parser.add_argument("--max-pages", type=int, default=None,
-                        help="Max Crexi search result pages to scrape (0=all, default: MAX_SEARCH_PAGES env or 0)")
+                        help="Max Crexi search result pages to scrape (default: 1 page, or 0 for all if explicitly set)")
     parser.add_argument("--dry-run", action="store_true",
                         default=os.environ.get("DRY_RUN", "false").lower() == "true",
                         help="Scrape + parse Crexi but skip comps pipeline")
@@ -333,7 +333,7 @@ def main():
     if args.max_pages is not None:
         max_pages = args.max_pages
     else:
-        max_pages = int(os.environ.get("MAX_SEARCH_PAGES", "0"))
+        max_pages = int(os.environ.get("MAX_SEARCH_PAGES", "1"))
 
     pages_label = f"up to {max_pages}" if max_pages > 0 else "all"
     logger.info("=" * 60)
@@ -343,6 +343,7 @@ def main():
 
     all_raw_listings = []
     page = 1
+    pages_scraped = 0
     while True:
         if max_pages > 0 and page > max_pages:
             logger.info("Reached max pages limit (%d) — stopping search.", max_pages)
@@ -352,6 +353,7 @@ def main():
         try:
             raw = scraper_module.scrape_search_results(args.market, api_keys["firecrawl"], page=page)
             all_raw_listings.extend(raw)
+            pages_scraped += 1
             logger.info("  Found %d listings on page %d (running total: %d)",
                         len(raw), page, len(all_raw_listings))
             if not raw:
@@ -365,10 +367,10 @@ def main():
                 logger.error("Aborting. Check if Firecrawl credits are available or try again later.")
                 sys.exit(1)
             else:
-                logger.warning("Page %d blocked or returned no valid results — treating as end of listings.", page)
+                logger.error("Page %d blocked (%s) — stopping pagination. Results may be TRUNCATED; later pages were not scraped.", page, exc)
                 break
 
-    logger.info("Stage 1 complete: scraped %d pages, found %d total raw listings.", page - 1, len(all_raw_listings))
+    logger.info("Stage 1 complete: scraped %d pages, found %d total raw listings.", pages_scraped, len(all_raw_listings))
 
     if not all_raw_listings:
         logger.warning("No listings found. Possible causes: Crexi block, no matching results, or URL params changed.")

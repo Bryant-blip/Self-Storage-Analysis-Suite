@@ -1,21 +1,21 @@
 """
 rank_deals.py
 
-Scores and ranks every deal in the reports/ folder using three metrics:
+Scores and ranks every deal in the reports/ folder.
 
-  Metric                Weight    Source
-  -----------------------------------------------------------------------
-  Yield to Cost (YoC)    65%      Calculated from proforma assumptions
-  Population (~3 mi)     40%      Census ACS 5-yr (cached in census_cache.db)
-  Land Cost Efficiency    5%      Land cost as % of total project cost
+Deal Score is the canonical score from db_utils.recalculate_scores
+(YoC 50% | Population 35% | Land Cost Efficiency 15%, min-max normalized
+across processed deals.db rows, hard-gated on YoC >= 10% and Pop >= 30k).
+This script looks each report up in deals.db by report_path and uses the
+stored deal_score/population_3mi so results match the dashboard and
+rank_reports.py. Reports with no matching deals.db row (or a gated-out
+score of NULL) are still listed, sorted after scored deals by YoC, with
+a blank Deal Score.
 
-Weights sum to 110 and are normalized internally so each metric's
-contribution is proportional regardless of the total.
-
-Each metric is scored 0–100 before weighting:
-  YoC:   0% → 0,  12%+ → 100  (linear, capped)
-  Pop:   30k → 0, 200k+ → 100 (log scale)
-  LCE:   land ≥50% of cost → 0, ≤10% → 100 (linear, capped)
+The YoC Score / Pop Score / LCE Score columns are this script's own
+informational per-metric breakdown (0-100, absolute thresholds — see
+score_yoc/score_population/score_lce below); they do not feed into the
+Deal Score and may not match db_utils' relative normalization.
 
 Output: reports/deal_rankings.xlsx
 Usage:  python rank_deals.py
@@ -35,6 +35,7 @@ except ImportError:
     sys.exit(1)
 
 from crexi import census_pop as census_module
+from db_utils import get_db, recalculate_scores
 
 REPORTS      = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
 OUTPUT_PATH  = os.path.join(REPORTS, "deal_rankings.xlsx")
@@ -44,9 +45,6 @@ MAX_POP      = 200_000
 YOC_MAX      = 0.12    # 12% YoC → score 100
 LCE_BEST     = 0.10    # land ≤10% of total cost → score 100
 LCE_WORST    = 0.50    # land ≥50% of total cost → score 0
-
-SCORE_WEIGHTS = {"yoc": 65, "pop": 40, "lce": 5}
-TOTAL_W       = sum(SCORE_WEIGHTS.values())
 
 
 # ── Proforma calculations ─────────────────────────────────────────────────────
@@ -130,53 +128,32 @@ def score_lce(land_pct) -> float:
     return max(0.0, (LCE_WORST - land_pct) / (LCE_WORST - LCE_BEST) * 100)
 
 
-def deal_score(yoc_s: float, pop_s: float, lce_s: float) -> float:
-    return (
-        yoc_s * SCORE_WEIGHTS["yoc"]
-        + pop_s * SCORE_WEIGHTS["pop"]
-        + lce_s * SCORE_WEIGHTS["lce"]
-    ) / TOTAL_W
-
-
-POPULATION_RADIUS_MILES = 3.0
-
-
-# ── Population lookup ─────────────────────────────────────────────────────────
-
 def get_population_3mi(address: str) -> int:
     """
-    Sum population across all ZIPs within 3 miles of the subject address.
-    Uses the subject ZIP centroid as the center point, builds a ZIP pool
-    (subject + centroids within 3 mi + adjacency file neighbors), then
-    fetches/caches Census ACS population for each ZIP in the pool.
-    Returns 0 if the ZIP can't be resolved.
+    Fallback population lookup for reports with no matching deals.db row
+    (see collect_deals — the DB's stored population_3mi is preferred).
+
+    Resolves the subject city/place from the address (state name lookup,
+    same as census_pop's own address parsing), then delegates to
+    check_population_gate for the subject-city-centroid-based 3-mile pool.
+    Returns 0 if the city can't be resolved.
     """
-    subject_zip = census_module.parse_zip_from_address(address)
-    if not subject_zip:
+    city, state = census_module.parse_city_state_from_address(address)
+    if not city or not state:
         return 0
 
-    centroids  = census_module.load_zip_centroids()
-    coords     = centroids.get(subject_zip)
-    if not coords:
+    place_key = census_module.get_place_name_lookup().get((city.lower(), state))
+    if not place_key:
         return 0
-    lat, lng = coords
 
-    adjacency = census_module.load_zip_adjacency()
-    zip_pool  = census_module.get_zip_pool(
-        subject_zip, lat, lng, centroids, adjacency,
-        radius_miles=POPULATION_RADIUS_MILES,
+    info = census_module.load_place_centroids().get(place_key)
+    if not info:
+        return 0
+
+    result = census_module.check_population_gate(
+        info["lat"], info["lng"], address, CENSUS_KEY,
     )
-
-    total = 0
-    for z in zip_pool:
-        pop = census_module.get_cached_population(z)
-        if pop is None:
-            pop = census_module.fetch_census_population(z, CENSUS_KEY)
-            if pop:
-                census_module.cache_population(z, pop)
-        if pop:
-            total += pop
-    return total
+    return result["population_3mi"]
 
 
 # ── Market name from folder path ──────────────────────────────────────────────
@@ -215,6 +192,29 @@ def collect_deals() -> list[dict]:
         if os.path.basename(p) != "deal_rankings.xlsx"
     )
 
+    # Pull canonical population_3mi / deal_score from deals.db, keyed by
+    # report_path, so this spreadsheet matches the dashboard and
+    # rank_reports.py. Recalculate first in case scores are stale/NULL.
+    # If deals.db is missing or unreadable, fall back to an empty lookup —
+    # every report is then treated as "not in DB" (see per-report handling
+    # below), so the script still runs.
+    db_rows = {}
+    try:
+        conn = get_db()
+        try:
+            recalculate_scores(conn)
+            for r in conn.execute(
+                "SELECT report_path, population_3mi, deal_score FROM deals "
+                "WHERE report_path IS NOT NULL"
+            ).fetchall():
+                key = os.path.normcase(os.path.abspath(r["report_path"]))
+                db_rows[key] = r
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"  WARNING: could not read deals.db ({exc}) — "
+              f"population/deal_score will use fallback lookups\n")
+
     deals = []
     for path in paths:
         rel = os.path.relpath(path, os.path.dirname(os.path.abspath(__file__)))
@@ -241,12 +241,17 @@ def collect_deals() -> list[dict]:
             continue
 
         print(f"  Scoring: {address[:55]}")
-        population = get_population_3mi(address)
+
+        db_row = db_rows.get(os.path.normcase(os.path.abspath(path)))
+        if db_row is not None and db_row["population_3mi"] is not None:
+            population = db_row["population_3mi"]
+        else:
+            population = get_population_3mi(address)
+        total = db_row["deal_score"] if db_row is not None else None
 
         yoc_s = score_yoc(metrics["yoc"])
         pop_s = score_population(population)
         lce_s = score_lce(metrics["land_pct"])
-        total = deal_score(yoc_s, pop_s, lce_s)
 
         deals.append({
             "path":         path,
@@ -268,7 +273,13 @@ def collect_deals() -> list[dict]:
             "deal_score":   total,
         })
 
-    deals.sort(key=lambda d: d["deal_score"], reverse=True)
+    # Scored deals first (by deal_score desc); deals with no DB score
+    # (no matching deals.db row, or gated out — deal_score NULL) sort
+    # after, by YoC desc.
+    deals.sort(key=lambda d: (
+        d["deal_score"] is not None,
+        d["deal_score"] if d["deal_score"] is not None else d["yoc"],
+    ), reverse=True)
     for i, d in enumerate(deals, 1):
         d["rank"] = i
 
@@ -296,7 +307,7 @@ def write_rankings(deals: list[dict]) -> None:
     # ── Title ─────────────────────────────────────────────────────────────────
     ws.merge_cells("A1:Q1")
     title = ws["A1"]
-    title.value = "Deal Rankings — Weighted Score (YoC 65% | Population 40% | Land Cost Efficiency 5%)"
+    title.value = "Deal Rankings — Deal Score is the canonical dashboard score (YoC 50% | Population 35% | Land Cost Efficiency 15%)"
     title.font  = Font(bold=True, size=13, color="1F3864")
     title.alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[1].height = 28
@@ -304,8 +315,9 @@ def write_rankings(deals: list[dict]) -> None:
     ws.merge_cells("A2:Q2")
     sub = ws["A2"]
     sub.value = (
-        f"Scoring: YoC 0–12%+ = 0–100 pts  |  Population 3-mile radius 30k–200k+ = 0–100 pts (log)  |  "
-        f"Land Cost %: 50%→0, 10%→100 pts  |  Weights normalized from 65/40/5"
+        f"Deal Score sourced from deals.db (blank = no matching report_path row, or hard-gated out: "
+        f"YoC < 10% or Pop < 30k)  |  YoC/Pop/LCE Score columns are informational only "
+        f"(YoC 0–12%+, Pop 30k–200k+ log scale, Land Cost % 50%→0/10%→100) and do not feed Deal Score"
     )
     sub.font      = Font(italic=True, size=9, color="666666")
     sub.alignment = Alignment(horizontal="center")
@@ -367,7 +379,7 @@ def write_rankings(deals: list[dict]) -> None:
         cell(1,  d["rank"])
         cell(2,  d["address"])
         cell(3,  d["market"])
-        cell(4,  round(d["deal_score"], 1))
+        cell(4,  round(d["deal_score"], 1) if d["deal_score"] is not None else None)
         cell(5,  d["yoc"]).number_format = '0.0%'
         cell(6,  round(d["yoc_score"],   1))
         cell(7,  d["population"],  '#,##0')
@@ -409,7 +421,8 @@ def main():
     print(f"{'Rank':<5} {'Score':>6}  {'YoC':>6}  {'Pop (3mi)':>11}  Address")
     print(f"{'-'*60}")
     for d in deals[:10]:
-        print(f"  #{d['rank']:<3} {d['deal_score']:>5.1f}  {d['yoc']:>5.1%}  "
+        score_str = f"{d['deal_score']:>5.1f}" if d["deal_score"] is not None else "  N/A"
+        print(f"  #{d['rank']:<3} {score_str}  {d['yoc']:>5.1%}  "
               f"{d['population']:>11,}  {d['address'][:45]}")
     if len(deals) > 10:
         print(f"  ... and {len(deals)-10} more")
@@ -419,7 +432,8 @@ def main():
     for d in deals[:3]:
         print(f"  #{d['rank']} {d['address']}")
         land_str = f"{d['land_pct']:.0%} of cost" if d["land_pct"] is not None else "land cost unknown"
-        print(f"     Score {d['deal_score']:.1f}  |  YoC {d['yoc']:.1%}  |  "
+        score_str = f"{d['deal_score']:.1f}" if d["deal_score"] is not None else "N/A"
+        print(f"     Score {score_str}  |  YoC {d['yoc']:.1%}  |  "
               f"Pop {d['population']:,}  |  Land {land_str}")
 
 
