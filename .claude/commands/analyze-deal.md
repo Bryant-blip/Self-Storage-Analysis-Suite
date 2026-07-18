@@ -23,5 +23,5 @@ You are helping analyze a self-storage development deal. Follow these steps:
 
 Key files:
 - Core pipeline: `comps_pipeline.py`
-- Templates: `claude excel model template.xlsx` (single/multi), `mixed_proforma_template.xlsx` (mixed)
+- Templates: `proforma_template.xlsx` (single/multi), `mixed_proforma_template.xlsx` (mixed)
 - Proforma logic reference: `PROFORMA_LOGIC.md`

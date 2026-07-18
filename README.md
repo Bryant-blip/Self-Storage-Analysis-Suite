@@ -30,7 +30,7 @@ Given a subject address, the core pipeline:
 
 - **`comps_pipeline.py`** — the core pipeline described above; also callable as a library from the other tools
 - **`storage_comps_agent.py`** — CLI for running the comps pipeline against a single address (`python storage_comps_agent.py "Austin, TX 78701" --radius 5`)
-- **`crexi_watcher.py`** / **`crexi_watcher_app.py`** — background agent that polls Crexi for new land listings in a target market, filters them against acreage/population criteria, and automatically runs the full comps pipeline on anything that passes (CLI or Tkinter desktop UI — see `Launch Crexi Watcher.bat`)
+- **`crexi_watcher.py`** / **`crexi_watcher_app.py`** — background agent that polls Crexi for new land listings in a target market, filters them against acreage/population criteria, and automatically runs the full comps pipeline on anything that passes (CLI or Tkinter desktop UI — see `launch_crexi_watcher.bat`)
 - **`app.py`** — Flask dashboard over the SQLite deal history (`data/deals.db`): deal counts, average yield-on-cost, $/sqft, and population by market
 - **`crexi/`** — Crexi scraping, parsing, deduplication, and Census population-gate modules used by the watcher
 - **`scripts/`** — one-off backfill/migration tools (population, land cost, market averages, report regeneration)

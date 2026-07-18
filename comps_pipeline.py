@@ -135,7 +135,7 @@ def calc_facility_assumptions(facility_type: str, acres: float = None) -> dict:
 
 DRIVE_MPH     = 25.0
 TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "claude excel model template.xlsx")
+                             "proforma_template.xlsx")
 MIXED_TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                    "mixed_proforma_template.xlsx")
 ORANGE_HEX = "FCE4D6"

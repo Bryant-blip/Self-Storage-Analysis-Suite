@@ -11,8 +11,8 @@ The pipeline auto-detects the facility type based on parcel acreage:
 
 | Type | Acres | Yield | Construction Cost | Rent Source | Template |
 |------|-------|-------|-------------------|-------------|----------|
-| **single_story** | > 4 | 40% of land | $50/sqft | Drive-up in-store comps weighted avg | `claude excel model template.xlsx` |
-| **multi_story** | < 2 | 122% of land | $95/sqft | CC in-store comps weighted avg | `claude excel model template.xlsx` |
+| **single_story** | > 4 | 40% of land | $50/sqft | Drive-up in-store comps weighted avg | `proforma_template.xlsx` |
+| **multi_story** | < 2 | 122% of land | $95/sqft | CC in-store comps weighted avg | `proforma_template.xlsx` |
 | **mixed** | 2–4 | Dynamic split | $95 (MS) + $50 (SS) | Separate CC + DU rates | `mixed_proforma_template.xlsx` |
 
 **Yield derivations:**
@@ -34,7 +34,7 @@ The pipeline auto-detects the facility type based on parcel acreage:
 
 ## Single-Story & Multi-Story Proforma
 
-These use the standard `claude excel model template.xlsx` template with a single
+These use the standard `proforma_template.xlsx` template with a single
 set of assumptions. The only differences are the auto-filled values for yield (E5),
 construction cost (E10), and rent source (E6).
 

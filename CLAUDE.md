@@ -19,7 +19,7 @@ A self-storage analysis platform: a **Flask web dashboard** (`app.py`) for deal 
 - **No fabricated data.** Market comps only include pricing sourced directly from each facility's website. If a rate can't be found, leave the cell blank — never guess.
 - **Distance is mandatory.** Every facility must have a verified Haversine distance from the subject property. Hard radius enforcement — Google Places radius is a hint, not a guarantee.
 ### Professionalism — Institutional Quality
-- **Structured output.** Excel reports match the proforma templates exactly — loaded directly from `claude excel model template.xlsx` (single/multi-story) or `mixed_proforma_template.xlsx` (mixed 2–4 acres).
+- **Structured output.** Excel reports match the proforma templates exactly — loaded directly from `proforma_template.xlsx` (single/multi-story) or `mixed_proforma_template.xlsx` (mixed 2–4 acres).
 - **Error handling with grace.** Users see clear, actionable error messages — never raw stack traces.
 
 ---
@@ -34,7 +34,7 @@ A self-storage analysis platform: a **Flask web dashboard** (`app.py`) for deal 
 
 ### Crexi Watcher (`crexi_watcher.py`)
 - **CLI pipeline:** scrape Crexi search results (Firecrawl) → census population gate → comps pipeline → Excel report + SQLite record
-- **Launcher:** `crexi_watcher_app.py` (tkinter, dark theme) / `Launch Crexi Watcher.bat`
+- **Launcher:** `crexi_watcher_app.py` (tkinter, dark theme) / `launch_crexi_watcher.bat`
 - **Defaults:** 1 search page per run (`--max-pages 0` or `MAX_SEARCH_PAGES=0` for all pages), 3 deals per run
 - **API keys:** GOOGLE_PLACES_API_KEY, FIRECRAWL_API_KEY, ANTHROPIC_API_KEY, optional CENSUS_API_KEY (from `.env`)
 
@@ -61,7 +61,7 @@ Parcel acreage determines the facility type, which drives yield, construction co
 - **multi_story (< 2 acres):** 122% yield, $95/sqft, CC comps
 - **mixed (2–4 acres):** Dynamic land split targeting 90,000 rentable sqft, separate CC + DU mini-proformas
 
-Mixed facilities use a dedicated template (`mixed_proforma_template.xlsx`) with two mini-proformas that feed into a main summary. Single/multi-story use `claude excel model template.xlsx`.
+Mixed facilities use a dedicated template (`mixed_proforma_template.xlsx`) with two mini-proformas that feed into a main summary. Single/multi-story use `proforma_template.xlsx`.
 
 ### Key Design Decisions
 - **Firecrawl over Tavily:** Switched because Tavily search returned area/market pages instead of per-facility pages. Firecrawl goes directly to each facility's own website URL (from Google Places) and handles Cloudflare on major chains.
@@ -83,7 +83,7 @@ Mixed facilities use a dedicated template (`mixed_proforma_template.xlsx`) with 
 ## Excel Output — 3 Tabs
 
 ### Tab 1: Proforma
-- **Single/Multi-story:** Loaded from `claude excel model template.xlsx` — assumptions in D/E, outputs in G/H
+- **Single/Multi-story:** Loaded from `proforma_template.xlsx` — assumptions in D/E, outputs in G/H
 - **Mixed (2–4 acres):** Loaded from `mixed_proforma_template.xlsx` — two mini-proformas (CC rows 13-20, DU rows 22-29) in columns B-G, main summary in columns I-J
 - Code auto-fills: address, acres, land cost, rent/sqft, yield, construction cost based on facility type
 - See `PROFORMA_LOGIC.md` for full cell map and assumption details
@@ -122,14 +122,14 @@ Real Estate Project/
 ├── comps_pipeline.py                   # Core pipeline — geocode → scrape → extract → Excel
 ├── crexi_watcher.py                    # Crexi deal-watcher CLI
 ├── crexi_watcher_app.py                # tkinter launcher for the watcher
-├── Launch Crexi Watcher.bat            # Watcher launcher
+├── launch_crexi_watcher.bat            # Watcher launcher
 ├── db_utils.py                         # SQLite schema, migrations, deal scoring
 ├── crexi/                              # Crexi scraper, census population gate, dedup
 ├── rank_reports.py                     # Ranked Excel of all deals (canonical deal_score)
 ├── scripts/                            # One-off backfill/migration/maintenance tools
 ├── storage_comps_agent.py              # CLI agent script
 ├── tests/                              # pytest suite (pure-logic + import smoke)
-├── claude excel model template.xlsx    # Proforma template for single/multi-story
+├── proforma_template.xlsx              # Proforma template for single/multi-story
 ├── mixed_proforma_template.xlsx        # Proforma template for mixed facilities (2-4 acres)
 ├── requirements.txt                    # Dependencies
 ├── requirements-dev.txt                # Dev dependencies (pytest, ruff)

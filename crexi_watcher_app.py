@@ -6,7 +6,7 @@ Runs crexi_watcher.py as a subprocess and streams log output in real time.
 Shows deal counters broken down by market/state.
 
 Launch:  python crexi_watcher_app.py
-         (or double-click Launch Crexi Watcher.bat)
+         (or double-click launch_crexi_watcher.bat)
 """
 
 import glob
