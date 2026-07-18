@@ -128,6 +128,7 @@ Real Estate Project/
 ├── rank_reports.py                     # Ranked Excel of all deals (canonical deal_score)
 ├── scripts/                            # One-off backfill/migration/maintenance tools
 ├── storage_comps_agent.py              # CLI agent script
+├── firecrawl_scrape.py                 # Firecrawl CLI (Tier 3 fallback for the agent)
 ├── tests/                              # pytest suite (pure-logic + import smoke)
 ├── proforma_template.xlsx              # Proforma template for single/multi-story
 ├── mixed_proforma_template.xlsx        # Proforma template for mixed facilities (2-4 acres)
