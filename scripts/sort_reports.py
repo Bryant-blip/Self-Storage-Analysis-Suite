@@ -228,10 +228,10 @@ def main():
 
     print(f"\n{'-'*60}")
     if dry:
-        print(f"DRY RUN complete:")
+        print("DRY RUN complete:")
         print(f"  Would move:     {moved}")
     else:
-        print(f"Sort complete:")
+        print("Sort complete:")
         print(f"  Moved:          {moved}")
     print(f"  Already sorted: {already_sorted}")
     print(f"  Unreadable:     {skipped_unreadable}")

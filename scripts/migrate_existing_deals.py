@@ -17,14 +17,14 @@ What it does:
   - Prints per-market summary
 """
 
-import os, sys
+import os
+import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # run from repo root or scripts/
 
 import glob
 import json
 import os
 import re as _re
-import sqlite3
 import sys
 from datetime import datetime, timezone
 

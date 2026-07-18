@@ -381,7 +381,7 @@ class CrexiWatcherApp(tk.Tk):
         if dry_run:
             cmd.append("--dry-run")
 
-        pages_label = f"all pages" if max_pages == 0 else f"max {max_pages} page(s)"
+        pages_label = "all pages" if max_pages == 0 else f"max {max_pages} page(s)"
         self._log_append(f"\n{'='*60}\n"
                          f"▶  {market}  |  max-deals={max_deals}  |  {pages_label}"
                          f"  |  dry-run={'yes' if dry_run else 'no'}\n"

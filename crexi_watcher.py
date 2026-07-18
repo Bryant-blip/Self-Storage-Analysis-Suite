@@ -28,7 +28,6 @@ import logging
 import os
 import sys
 import time
-from datetime import date
 
 from dotenv import load_dotenv
 

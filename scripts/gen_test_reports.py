@@ -1,8 +1,10 @@
 """Generate 3 test Excel reports to verify facility-type proforma logic."""
 
-import os, sys
+import os
+import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # run from repo root or scripts/
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 from comps_pipeline import write_comps_excel

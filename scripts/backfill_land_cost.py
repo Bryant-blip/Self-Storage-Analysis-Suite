@@ -70,8 +70,10 @@ def _extract_price_from_markdown(content: str):
         try:
             val = float(m.group(1).replace(",", ""))
             suffix = m.group(2).upper()
-            if suffix == "M":   val *= 1_000_000
-            elif suffix == "K": val *= 1_000
+            if suffix == "M":
+                val *= 1_000_000
+            elif suffix == "K":
+                val *= 1_000
             if 50_000 <= val <= 100_000_000:
                 return val
         except ValueError:
@@ -82,8 +84,10 @@ def _extract_price_from_markdown(content: str):
         try:
             val = float(fm.group(1).replace(",", ""))
             suffix = fm.group(2).upper()
-            if suffix == "M":   val *= 1_000_000
-            elif suffix == "K": val *= 1_000
+            if suffix == "M":
+                val *= 1_000_000
+            elif suffix == "K":
+                val *= 1_000
             if 50_000 <= val <= 100_000_000:
                 return val
         except ValueError:
@@ -169,26 +173,26 @@ def main():
         price = _scrape_price(url)
 
         if price is None:
-            print(f"  -> no price found")
+            print("  -> no price found")
             errors += 1
         else:
             print(f"  -> ${price:,.0f}")
             if APPLY:
                 ws["C6"] = price
                 wb.save(path)
-                print(f"  -> saved")
+                print("  -> saved")
             updated += 1
 
         time.sleep(1)  # rate limit between Firecrawl calls
 
     print()
-    print(f"Done.")
+    print("Done.")
     print(f"  Would update / updated:  {updated}")
     print(f"  Already had price:       {skipped_has_price}")
     print(f"  No URL in C2:            {skipped_no_url}")
     print(f"  Errors:                  {errors}")
     if not APPLY and updated:
-        print(f"\nRun with --apply to write changes.")
+        print("\nRun with --apply to write changes.")
 
 
 if __name__ == "__main__":
