@@ -8,11 +8,14 @@ circular dependencies.
 Database: data/deals.db
 """
 
+import logging
 import os
 import sqlite3
 from datetime import datetime, timezone
 
 DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "deals.db")
+
+logger = logging.getLogger(__name__)
 
 
 def get_db() -> sqlite3.Connection:
@@ -22,7 +25,7 @@ def get_db() -> sqlite3.Connection:
     return conn
 
 
-def init_db():
+def init_db() -> None:
     """Create all tables if they don't exist. Safe to call multiple times."""
     os.makedirs(os.path.dirname(DB), exist_ok=True)
     conn = get_db()
@@ -127,7 +130,7 @@ def init_db():
         conn.close()
 
 
-def recalculate_scores(conn: sqlite3.Connection):
+def recalculate_scores(conn: sqlite3.Connection) -> None:
     """
     Normalize YoC, population_3mi, and land_cost_efficiency across all
     processed, non-skipped deals, then write:
@@ -172,7 +175,7 @@ def recalculate_scores(conn: sqlite3.Connection):
             ),
         })
 
-    def _norm(values):
+    def _norm(values: list[float | None]) -> list[float]:
         """Normalize a list of floats (None → neutral 50). Returns same-length list."""
         valid = [v for v in values if v is not None]
         if not valid or len(valid) < 2:
@@ -216,14 +219,14 @@ def calc_proforma_cells(ws) -> dict:
     a sqft-weighted blend of the two mini-proformas instead. In that case
     an extra "du_psf" key (drive-up rent $/sqft from D24) is also returned.
     """
-    def _float(cell_ref):
+    def _float(cell_ref: str) -> float | None:
         try:
             v = ws[cell_ref].value
             return float(v) if v is not None else None
         except (TypeError, ValueError):
             return None
 
-    def _str(cell_ref):
+    def _str(cell_ref: str) -> str | None:
         v = ws[cell_ref].value
         return str(v).strip() if v is not None else None
 
@@ -243,13 +246,13 @@ def calc_proforma_cells(ws) -> dict:
         cc_exp  = _float("D17")
         du_exp  = _float("D26")
 
-        def _blend(cc_val, du_val):
+        def _blend(cc_val: float | None, du_val: float | None) -> float | None:
             if cc_val is None or du_val is None or du_sqft is None:
                 return None
             total = cc_sqft + du_sqft
             return (cc_val * cc_sqft + du_val * du_sqft) / total if total else None
 
-        def _blend_if_diff(cc_val, du_val):
+        def _blend_if_diff(cc_val: float | None, du_val: float | None) -> float | None:
             if cc_val is None or du_val is None:
                 return None
             if cc_val == du_val:
@@ -287,7 +290,7 @@ def calc_proforma_cells(ws) -> dict:
     }
 
 
-def _calc_yoc(cells: dict):
+def _calc_yoc(cells: dict) -> float | None:
     """Derive yield_on_cost from raw proforma cells. Returns None if inputs missing."""
     try:
         acres         = cells["acres"]
@@ -317,26 +320,24 @@ def write_deal_to_db(
     market: str,
     address: str,
     url: str,
-    lat,
-    lng,
-    population_3mi,
+    lat: float | None,
+    lng: float | None,
+    population_3mi: int | None,
     zip_code: str,
-    zip_pool_count,
+    zip_pool_count: int | None,
     first_seen: str,
     facilities: list,
-    pop_gate_passed: str = None,
-    city_name: str = None,
+    pop_gate_passed: str | None = None,
+    city_name: str | None = None,
     recalc: bool = True,
-):
+) -> None:
     """
     Write a processed deal to SQLite. Reads proforma cells from the Excel
     report, calculates financial metrics, inserts/replaces in deals table,
     inserts comps rows, and recalculates all scores.
 
-    Never raises — all errors are caught and logged to stderr.
+    Never raises — all errors are caught and logged.
     """
-    import sys
-
     try:
         import openpyxl
 
@@ -359,8 +360,8 @@ def write_deal_to_db(
                     None,
                 )
             except Exception as exc:
-                print(f"  [db_utils] Warning: could not read report {report_path}: {exc}",
-                      file=sys.stderr)
+                logger.warning("  [db_utils] Warning: could not read report %s: %s",
+                               report_path, exc)
         else:
             fac_tab = None
 
@@ -438,5 +439,5 @@ def write_deal_to_db(
             conn.close()
 
     except Exception as exc:
-        print(f"  [db_utils] write_deal_to_db failed for {listing_id}: {exc}",
-              file=sys.stderr)
+        logger.error("  [db_utils] write_deal_to_db failed for %s: %s",
+                     listing_id, exc)

@@ -10,14 +10,17 @@ Usage:
 
 import glob
 import json
+import logging
 import os
 import queue
+import sqlite3
 import subprocess
 import sys
 import threading
 import time
 import uuid
 from collections import deque
+from collections.abc import Callable
 from datetime import datetime, timezone
 from flask import Flask, jsonify, request, send_file, send_from_directory, abort, Response, stream_with_context
 from dotenv import load_dotenv
@@ -30,13 +33,9 @@ from db_utils import get_db, init_db
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR    = os.path.join(PROJECT_DIR, "data")
 
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
-
-
-@app.before_request
-def _ensure_db():
-    """Lazy-init DB on first request so we don't need app context tricks."""
-    pass
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -50,11 +49,11 @@ def _date_clause(date_range: str, col: str = "processed_at") -> str:
     return "1=1"
 
 
-def _row_to_dict(row) -> dict:
+def _row_to_dict(row: sqlite3.Row | None) -> dict:
     return dict(row) if row else {}
 
 
-def _rows_to_list(rows) -> list:
+def _rows_to_list(rows: list[sqlite3.Row]) -> list[dict]:
     return [dict(r) for r in rows]
 
 
@@ -376,7 +375,7 @@ def _load_counters() -> dict:
     return counters
 
 
-def _reader_thread(job_id: str, proc: subprocess.Popen):
+def _reader_thread(job_id: str, proc: subprocess.Popen) -> None:
     """Read proc stdout line-by-line; push into deque + fan out to subscribers."""
     job = _JOBS[job_id]
     try:
@@ -399,7 +398,7 @@ def _reader_thread(job_id: str, proc: subprocess.Popen):
         _finalize_job(job_id, proc.returncode)
 
 
-def _finalize_job(job_id: str, exit_code: int):
+def _finalize_job(job_id: str, exit_code: int) -> None:
     job = _JOBS.get(job_id)
     if not job:
         return
@@ -422,7 +421,7 @@ def _finalize_job(job_id: str, exit_code: int):
         conn.commit()
         conn.close()
     except Exception as exc:
-        print(f"[watcher] finalize DB write failed: {exc}", file=sys.stderr)
+        logger.error("[watcher] finalize DB write failed: %s", exc)
         deals_found = 0
 
     job["status"] = status
@@ -645,7 +644,7 @@ def _pct_to_step(pct: float) -> str:
     return "excel"
 
 
-def _make_comps_progress_cb(job_id: str):
+def _make_comps_progress_cb(job_id: str) -> Callable[[float | None, str], None]:
     last_step: list = [None]
 
     def cb(pct, msg):
@@ -670,7 +669,7 @@ def _make_comps_progress_cb(job_id: str):
     return cb
 
 
-def _broadcast_comps(job_id: str, msg: dict):
+def _broadcast_comps(job_id: str, msg: dict) -> None:
     job = _COMPS_JOBS.get(job_id)
     if not job:
         return
@@ -822,6 +821,7 @@ def api_comps_download(job_id):
 # ── Startup ───────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     init_db()
-    print("Storage Intel dashboard starting at http://localhost:5000")
+    logger.info("Storage Intel dashboard starting at http://localhost:5000")
     app.run(host="127.0.0.1", port=5000, debug=False)

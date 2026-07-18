@@ -15,12 +15,15 @@ Usage:
 """
 
 import argparse
+import logging
 import os
 from datetime import datetime
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+
+logger = logging.getLogger(__name__)
 
 
 HEADER_FILL_RANKED  = PatternFill("solid", fgColor="1A7A4A")  # green
@@ -197,11 +200,12 @@ def main():
         ws.column_dimensions[get_column_letter(col_idx)].width = width
 
     wb.save(args.output)
-    print(f"Wrote ranked spreadsheet -> {args.output}")
-    print(f"  Ranked:  {len(ranked)} deals")
-    print(f"  Ungated: {len(ungated)} deals")
-    print(f"  Total:   {len(deals)} reports")
+    logger.info("Wrote ranked spreadsheet -> %s", args.output)
+    logger.info("  Ranked:  %d deals", len(ranked))
+    logger.info("  Ungated: %d deals", len(ungated))
+    logger.info("  Total:   %d reports", len(deals))
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     main()
