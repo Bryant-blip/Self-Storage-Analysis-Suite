@@ -128,12 +128,11 @@ Real Estate Project/
 ├── rank_reports.py                     # Ranked Excel of all deals (canonical deal_score)
 ├── scripts/                            # One-off backfill/migration/maintenance tools
 ├── storage_comps_agent.py              # CLI agent script
-├── firecrawl_scrape.py                 # Standalone Firecrawl scraper (reference)
-├── test_pipeline.py                    # Single-facility debug script
 ├── tests/                              # pytest suite (pure-logic + import smoke)
 ├── claude excel model template.xlsx    # Proforma template for single/multi-story
 ├── mixed_proforma_template.xlsx        # Proforma template for mixed facilities (2-4 acres)
 ├── requirements.txt                    # Dependencies
+├── requirements-dev.txt                # Dev dependencies (pytest, ruff)
 ├── data/                               # place_centroids.csv, census cache, deals.db
 ├── output/                             # Generated comps Excel files
 └── reports/                            # Per-market deal reports + rankings
@@ -152,5 +151,5 @@ Real Estate Project/
 
 ## Core Dependencies
 ```
-firecrawl-py, anthropic, openpyxl, requests, python-dotenv, flask, playwright
+firecrawl-py, anthropic, openpyxl, requests, python-dotenv, flask
 ```

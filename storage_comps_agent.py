@@ -74,20 +74,13 @@ For each facility STILL missing prices:
    This renders JavaScript server-side and returns clean Markdown with pricing.
    Much better than raw HTML for extracting structured price data.
 5. After each facility lookup, REWRITE the Excel file with updated data.
-
-### Tier 4 — Playwright scraper (LAST RESORT — if Firecrawl fails)
-Only if Firecrawl returns an error or empty content:
-
-    python scrape_prices.py "<facility-website-url>"
-
-This launches a local headless browser and prints visible page text.
-Use as a final fallback — it's slower and output is less structured.
-After each lookup, REWRITE the Excel file with updated data.
+6. If Firecrawl returns an error or empty content for a facility, leave its
+   cells blank — never guess a price.
 
 ### Key rules:
 - **Never skip Tier 1.** Snippets are free and often have prices.
 - **Don't fetch what you already have.** If Tier 1 snippets gave you prices
-  for a facility, don't fetch that facility again in Tier 2/3/4.
+  for a facility, don't fetch that facility again in Tier 2/3.
 - **Escalate per-facility, not globally.** If 6 of 8 facilities have prices
   after Tier 2, only run Tier 3 on the remaining 2.
 - **Rate formats:** Prices appear as "$89", "$89.00", "$89/mo", "From $89".

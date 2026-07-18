@@ -52,7 +52,6 @@ Full cell-by-cell proforma logic is documented in [`PROFORMA_LOGIC.md`](PROFORMA
 
 ```bash
 pip install -r requirements.txt
-playwright install chromium   # only needed for the scrape_prices.py fallback
 cp .env.example .env          # fill in your API keys
 ```
 
@@ -77,13 +76,20 @@ python crexi_watcher.py --max-deals 3
 python app.py   # → http://localhost:5000
 ```
 
+## Development
+
+```bash
+pip install -r requirements-dev.txt   # dev deps (pytest, ruff)
+python -m pytest -q                   # run the test suite
+python -m ruff check .                # lint
+```
+
 ## Tech Stack
 
-Python 3.11 · Flask · SQLite (WAL mode) · Google Places/Geocoding API · Firecrawl · Claude Haiku · openpyxl · Playwright (fallback scraping)
+Python 3.11 · Flask · SQLite (WAL mode) · Google Places/Geocoding API · Firecrawl · Claude Haiku · openpyxl
 
 ## Known Limitations
 
 - Facilities with no website listed in Google Places are skipped for pricing (by design — no fabricated data)
 - A handful of small/independent operators don't publish pricing online and will show blank cells
-- Some chains use dynamic pricing widgets that aren't yet handled by the primary scraper (Playwright fallback exists but isn't fully wired in)
-- No automated test suite yet — `test_pipeline.py` is a manual single-facility debug script, not a pytest suite
+- Some chains use dynamic pricing widgets that aren't yet handled by the scraper
